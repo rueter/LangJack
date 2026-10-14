@@ -1,7 +1,7 @@
 # LangJack
 Documentation for LangJack extension and its development
 
-* Here is a list of what Jack Rueter has [published](https://multilingualfacilitation.com/LangJack/docs/langjack_documentation.html)
+* Here is a support page for [LangJack](https://rueter.github.io/LangJack/docs/langjack_documentation.html)
 
 CITE
 
