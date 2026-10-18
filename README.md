@@ -1,7 +1,7 @@
 # LangJack
 Documentation for LangJack extension and its development
 
-* Here is a support page for [LangJack](https://rueter.github.io/docs/langjack_documentation.html)
+* See README
 
 CITE
 
