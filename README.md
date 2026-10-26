@@ -159,6 +159,8 @@ Verifies:
 - Multi-language dictionary glossing and ISO language code filtering.
 - CoNLL-U, 5-line Linguistic Leipzig, and Ve'rdd multi-format exports.
 
-CITE
+---
+
+## CITE
 
 Jack Rueter & Olga Erina, LangJack
