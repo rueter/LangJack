@@ -1,0 +1,2 @@
+LangJack v1.0 is a tool that utilizes a Linguistic morphological analyzer and interlinear glosser powered by hfst-js, UralicNLP dictionaries, Universal Dependencies, and Ve'rdd.
+

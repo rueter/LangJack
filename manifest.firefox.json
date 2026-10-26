@@ -1,0 +1,90 @@
+{
+  "manifest_version": 3,
+  "name": "LangJack",
+  "version": "1.0.0",
+  "description": "LangJack: Linguistic morphological analyzer and interlinear glosser powered by hfst-js, UralicNLP dictionaries, UD, and Ve'rdd.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "langjack@rootroo.com",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png",
+    "192": "icons/icon192.png",
+    "512": "icons/icon512.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "LangJack - Morphological Analyzer & Glosser",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png",
+      "192": "icons/icon192.png",
+      "512": "icons/icon512.png"
+    }
+  },
+  "background": {
+    "scripts": [
+      "background.js"
+    ],
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "js/content/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "contextMenus",
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://raw.githubusercontent.com/*",
+    "https://cdn.jsdelivr.net/*",
+    "https://models.uralicnlp.com/*",
+    "http://models.uralicnlp.com/*",
+    "https://*.github.io/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "models/*",
+        "icons/*",
+        "index.html",
+        "css/*",
+        "js/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}

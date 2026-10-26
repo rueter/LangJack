@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LangJack</title>
+  <style>
+    :root {
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --surface: #ffffff;
+      --surface-alt: #f8fafc;
+      --border: #cbd5e1;
+      --text: #0f172a;
+      --text-muted: #64748b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 360px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--surface-alt);
+      color: var(--text);
+      padding: 16px;
+      font-size: 13px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+    }
+
+    .title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .quick-input {
+      width: 100%;
+      height: 70px;
+      padding: 8px 10px;
+      font-size: 13px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #ffffff;
+      resize: none;
+      outline: none;
+      margin-bottom: 10px;
+    }
+
+    .quick-input:focus {
+      border-color: var(--primary);
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s;
+      margin-bottom: 8px;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover {
+      background: #e2e8f0;
+    }
+
+    .context-menu-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+
+    .card-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .active-menu-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #0369a1;
+      background: #e0f2fe;
+      border: 1px solid #bae6fd;
+      border-radius: 4px;
+      padding: 5px 8px;
+      margin-bottom: 8px;
+      width: 100%;
+      word-break: break-word;
+    }
+
+    .menu-mode-buttons {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .mode-btn {
+      flex: 1;
+      padding: 6px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+    }
+
+    .mode-btn:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+    }
+
+    .mode-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #ffffff;
+    }
+
+    .card-hint {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      line-height: 1.35;
+    }
+
+    .lang-picker-select {
+      width: 100%;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: #ffffff;
+      color: var(--text);
+      outline: none;
+      margin-bottom: 6px;
+      cursor: pointer;
+    }
+
+    .lang-picker-select:focus {
+      border-color: var(--primary);
+    }
+
+    .popup-dict-result {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 4px;
+    }
+
+    .result-lemma {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0284c7;
+    }
+
+    .result-upos-badge {
+      display: inline-block;
+      font-size: 10.5px;
+      font-weight: 700;
+      background: #e0f2fe;
+      color: #0369a1;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .result-lang-badge {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .result-morphology {
+      font-size: 11px;
+      color: #475569;
+      background: #f8fafc;
+      padding: 4px 6px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      font-family: monospace;
+      word-break: break-all;
+    }
+
+    .result-glosses {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 140px;
+      overflow-y: auto;
+    }
+
+    .result-gloss-item {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      font-size: 12.5px;
+      line-height: 1.4;
+    }
+
+    .result-gloss-lang {
+      font-size: 9.5px;
+      font-weight: 700;
+      color: #64748b;
+      background: #f1f5f9;
+      padding: 1px 4px;
+      border-radius: 3px;
+      text-transform: uppercase;
+    }
+
+    .result-gloss-lang-default {
+      background: #0284c7;
+      color: #ffffff;
+      font-weight: 800;
+    }
+
+    .footer {
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon32.png" alt="Logo" class="logo">
+    <div>
+      <div class="title">LangJack</div>
+      <div class="subtitle">Morphological Analysis & Interlinear Glossing</div>
+    </div>
+  </div>
+
+  <!-- In-Page Context Menu Button Selector -->
+  <div class="context-menu-card">
+    <div class="card-label">Right-Click Context Menu Button:</div>
+    <div id="activeMenuBadge" class="active-menu-badge">
+      📖 Dictionary [hfst_dict_lookup]
+    </div>
+    <div class="menu-mode-buttons">
+      <button type="button" id="setModeDictBtn" class="mode-btn active" title="Show single Dictionary button directly at top level of right-click menu">
+        📖 Dictionary
+      </button>
+      <button type="button" id="setModeAnnotatorBtn" class="mode-btn" title="Show single Glosser button directly at top level of right-click menu">
+        📝 Glosser
+      </button>
+      <button type="button" id="setModeBothBtn" class="mode-btn" title="Show both buttons">
+        🌐 Both
+      </button>
+    </div>
+    <div class="card-hint">
+      Showing a single button places it directly at the top level upon right-clicking on any webpage.
+    </div>
+  </div>
+
+  <!-- Default Reading Language Selector -->
+  <div class="context-menu-card">
+    <div class="card-label">Default Reading Language:</div>
+    <select id="defaultLangSelect" class="lang-picker-select" title="Default language used for in-page dictionary lookups">
+      <option value="sms">Skolt Sámi (sms)</option>
+      <option value="myv">Erzya (myv)</option>
+      <option value="mdf">Moksha (mdf)</option>
+      <option value="fin">Finnish (fin)</option>
+      <option value="kpv">Komi-Zyrian (kpv)</option>
+      <option value="koi">Komi-Permyak (koi)</option>
+      <option value="apu">Apurinã (apu)</option>
+      <option value="sme">North Sámi (sme)</option>
+      <option value="smn">Inari Sámi (smn)</option>
+      <option value="sma">South Sámi (sma)</option>
+      <option value="udm">Udmurt (udm)</option>
+      <option value="mhr">Meadow Mari (mhr)</option>
+      <option value="mrj">Hill Mari (mrj)</option>
+      <option value="olo">Livvi-Karelian (olo)</option>
+      <option value="vep">Veps (vep)</option>
+      <option value="est">Estonian (est)</option>
+      <option value="vro">Võro (vro)</option>
+      <option value="liv">Livonian (liv)</option>
+    </select>
+    <div class="card-hint">
+      Manual setting is prioritized first for fastest in-page lookups, with retention after first use on each webpage.
+    </div>
+  </div>
+
+  <!-- Default Translation Target Language Selector -->
+  <div class="context-menu-card">
+    <div class="card-label">Default Translation Target Language:</div>
+    <select id="defaultTgtLangSelect" class="lang-picker-select" title="Default translation target language: shows up first in lookups, while other languages remain accessible">
+      <option value="all">🌐 All Languages (all)</option>
+      <option value="eng">English (eng)</option>
+      <option value="fin">Finnish (fin)</option>
+      <option value="rus">Russian (rus)</option>
+      <option value="deu">German (deu)</option>
+      <option value="por">Portuguese (por)</option>
+      <option value="swe">Swedish (swe)</option>
+      <option value="est">Estonian (est)</option>
+      <option value="nob">Norwegian Bokmål (nob)</option>
+      <option value="fra">French (fra)</option>
+      <option value="spa">Spanish (spa)</option>
+      <option value="myv">Erzya (myv)</option>
+      <option value="mdf">Moksha (mdf)</option>
+      <option value="sme">North Sámi (sme)</option>
+      <option value="smn">Inari Sámi (smn)</option>
+      <option value="sms">Skolt Sámi (sms)</option>
+      <option value="kpv">Komi-Zyrian (kpv)</option>
+      <option value="koi">Komi-Permyak (koi)</option>
+      <option value="udm">Udmurt (udm)</option>
+      <option value="mhr">Meadow Mari (mhr)</option>
+      <option value="mrj">Hill Mari (mrj)</option>
+      <option value="olo">Livvi-Karelian (olo)</option>
+      <option value="custom">✏️ Custom ISO...</option>
+    </select>
+    <div class="card-hint">
+      Translations in this language show up first in dictionary lookups and on the workbench. Other offered translations remain accessible.
+    </div>
+  </div>
+
+  <textarea id="popupInput" class="quick-input" placeholder="Selected word or phrase..."></textarea>
+
+  <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+    <button type="button" id="lookupDictBtn" class="btn btn-primary" style="flex: 2; margin-bottom: 0;">
+      📖 Look Up in Dictionary
+    </button>
+    <button type="button" id="captureSelectionBtn" class="btn btn-secondary" style="flex: 1; margin-bottom: 0;" title="Grab text selected on current webpage">
+      📋 Grab Tab
+    </button>
+  </div>
+
+  <!-- Quick Dictionary Lookup Results Card -->
+  <div id="popupDictResult" class="popup-dict-result" style="display: none;">
+    <div class="result-header">
+      <div style="display: flex; align-items: baseline; gap: 6px;">
+        <span id="resultLemma" class="result-lemma"></span>
+        <span id="resultUpos" class="result-upos-badge"></span>
+      </div>
+      <span id="resultSrcLang" class="result-lang-badge"></span>
+    </div>
+    <div id="resultMorphology" class="result-morphology"></div>
+    <div id="resultGlosses" class="result-glosses"></div>
+  </div>
+
+  <button type="button" id="openWorkbenchBtn" class="btn btn-secondary">
+    🚀 Open in Full Workbench
+  </button>
+
+  <div class="footer">
+    CoNLL-U • Leipzig Glossing • Ve'rdd
+  </div>
+
+  <script src="js/controllers/popup.js"></script>
+</body>
+</html>

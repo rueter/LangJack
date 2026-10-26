@@ -1,0 +1,21 @@
+LangJack V1.0: Your Pocket Linguistic Lab 🗣️
+
+LangJack is a finite-state linguistic tool powered by open-source tech: hfst-js, UralicNLP dictionaries, Universal Dependencies, and Ve'rdd.
+
+Since 1996, author Jack Rueter has been crafting finite-state descriptions for Uralic and other languages. Now, instead of wrestling with heavy linguistics software, LangJack brings it all to a simple interface.
+
+Languages: Finnish, all Saamic varieties, Komi, Udmurt, Mordvin, Mari—and expandable!
+
+Dictionaries: Over 1.5 million translation pairs (like Smi:Eng, Eng:Smi). You can even add your own .TSV files.
+
+Workflow: Right-click a word for instant translation. Analyze whole sentences, toggle between morphology and translations, export Conllu, or save to an accumulating treebank.
+
+LangJack is still evolving—stay tuned for updates! Suggestions welcome.
+
+
+
+
+
+##
+Utilize finite-state descriptions of low-resourced languages to clear the digital threshold. Click-in-text finite-state dictionary with morphological analysis, glossing and treebank building possibilities through UralicNLP libraries and the achievements of individual open-source researchers working in the GiellaLT and Apertium infrastructures.
+

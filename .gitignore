@@ -1,0 +1,5 @@
+dist/
+scratch/
+*~
+.DS_Store
+models/*hfstol

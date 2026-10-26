@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LangJack - Morphological Analyzer & Interlinear Glosser</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" type="image/png" href="icons/icon32.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0284c7">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="LangJack">
+  <link rel="apple-touch-icon" href="icons/icon192.png">
+</head>
+<body>
+
+  <!-- Top Application Bar -->
+  <header class="app-header">
+    <div class="brand">
+      <img src="icons/icon48.png" alt="LangJack Logo" class="brand-icon">
+      <div>
+        <div class="brand-title">LangJack</div>
+        <div class="brand-subtitle">Powered by hfst-js & UralicNLP Dictionaries • Universal Dependencies & Ve'rdd</div>
+      </div>
+    </div>
+
+    <div class="header-controls">
+      <!-- Source Language ISO Picker -->
+      <div class="lang-picker-group">
+        <span class="lang-label">Source Lang:</span>
+        <select id="srcLangSelect" class="lang-select" title="Source Language ISO 639-3">
+          <option value="myv" selected>myv (Erzya)</option>
+          <option value="fin">fin (Finnish)</option>
+          <option value="sms">sms (Skolt Sami)</option>
+          <option value="kpv">kpv (Komi-Zyrian)</option>
+          <option value="mdf">mdf (Moksha)</option>
+          <option value="mhr">mhr (Meadow Mari)</option>
+          <option value="mrj">mrj (Hill Mari)</option>
+          <option value="olo">olo (Livvi-Karelian)</option>
+          <option value="fkv">fkv (Kven)</option>
+          <option value="sme">sme (North Sami)</option>
+          <option value="smn">smn (Inari Sami)</option>
+          <option value="udm">udm (Udmurt)</option>
+          <option value="koi">koi (Komi-Permyak)</option>
+          <option value="vro">vro (Võro)</option>
+          <option value="apu">apu (Apurinã)</option>
+          <option value="custom">Custom ISO...</option>
+        </select>
+      </div>
+
+      <!-- Target Gloss Language ISO Picker -->
+      <div class="lang-picker-group">
+        <span class="lang-label">Default Target:</span>
+        <select id="tgtLangSelect" class="lang-select" title="Default Translation Target Language (ISO 639-3): shows up first, while other languages remain accessible">
+          <option value="all" selected>🌐 All Languages</option>
+          <option value="eng">eng (English)</option>
+          <option value="fin">fin (Finnish)</option>
+          <option value="rus">rus (Russian)</option>
+          <option value="deu">deu (German)</option>
+          <option value="por">por (Portuguese)</option>
+          <option value="swe">swe (Swedish)</option>
+          <option value="est">est (Estonian)</option>
+          <option value="fra">fra (French)</option>
+          <option value="spa">spa (Spanish)</option>
+          <option value="mdf">mdf (Moksha)</option>
+          <option value="myv">myv (Erzya)</option>
+          <option value="sme">sme (North Sami)</option>
+          <option value="custom">Custom ISO...</option>
+        </select>
+      </div>
+
+      <!-- Models & Dictionaries Manager Button -->
+      <button id="openSettingsBtn" class="btn btn-secondary btn-sm" title="Manage HFST Models & Dictionaries">
+        ⚙️ Models & Dictionaries
+      </button>
+
+      <!-- Paradigm Discoverer Button (Hidden for v1.0 store release) -->
+      <button id="openParadigmDiscovererBtn" class="btn btn-secondary btn-sm" style="background: #eef2ff; color: #4338ca; border-color: #c7d2fe; font-weight: 700;" title="Open Two-Level Paradigm Discoverer (Koskenniemi twol, LexC, LexD, & Stem Regexes)">
+        🧩 Paradigm Discoverer
+      </button>
+
+      <!-- UralicNLP Analyzers Renewal Button in Top Corner (Requirement 1) -->
+      <button id="renewUralicModelsTopBtn" class="btn btn-corner-subtle btn-sm" title="Renew active morphological analyzer directly from UralicNLP nightly models">
+        🔄 <span id="renewUralicBtnLabel">Renew UralicNLP</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workbench Container -->
+  <main class="workbench-container">
+
+    <!-- 1. Text Input & Analysis Setup -->
+    <section class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span>📝 1. Input Text</span>
+          <span id="inputAnalyzerBadge" class="panel-badge" style="background: #e0f2fe; color: #0369a1; font-weight: 700;">
+            Analyzer: Erzya (myv)
+          </span>
+        </div>
+        <div class="input-header-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <!-- Explicit Language Selection for Input Text -->
+          <div class="lang-picker-group">
+            <span class="lang-label">Text Language:</span>
+            <select id="inputTextLangSelect" class="lang-select" title="Select language of the input text to choose the matching HFST analyzer">
+              <option value="myv" selected>myv (Erzya)</option>
+              <option value="fin">fin (Finnish)</option>
+              <option value="sms">sms (Skolt Sami)</option>
+              <option value="kpv">kpv (Komi-Zyrian)</option>
+              <option value="mdf">mdf (Moksha)</option>
+              <option value="mhr">mhr (Meadow Mari)</option>
+              <option value="mrj">mrj (Hill Mari)</option>
+              <option value="olo">olo (Livvi-Karelian)</option>
+              <option value="fkv">fkv (Kven)</option>
+              <option value="sme">sme (North Sami)</option>
+              <option value="smn">smn (Inari Sami)</option>
+              <option value="udm">udm (Udmurt)</option>
+              <option value="koi">koi (Komi-Permyak)</option>
+              <option value="apu">apu (Apurinã)</option>
+              <option value="vro">vro (Võro)</option>
+              <option value="custom">Custom ISO...</option>
+            </select>
+          </div>
+
+          <div class="sample-buttons">
+            <span style="font-size: 12px; color: var(--text-muted);">Quick Samples:</span>
+            <select id="samplePicker" class="lang-select">
+              <option value="myv_meeting" selected>Erzya: Вастомась ульнесь пек вадря.</option>
+              <option value="myv_boy">Erzya: Цёрась ловны книганть кудосо.</option>
+              <option value="fin_animals">Finnish: Kissa nukkuu talossa ja koira juoksee.</option>
+              <option value="sms_dog">Skolt Sami: Kåʹllvueiʹvv lij šurr piânnai.</option>
+              <option value="apu_kyky">Apurinã: Kyky atamary anãpa.</option>
+              <option value="vro_tree">Võro: Kand om korgõ puu all.</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <textarea id="inputTextArea" class="input-textarea" placeholder="Type or paste your text here (e.g. sentences in Erzya, Finnish, Skolt Sami, Komi, Apurinã, etc.)..."></textarea>
+
+        <div class="input-actions-bar">
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button id="analyzeBtn" class="btn btn-primary">
+              ⚡ Analyze Morphologically (hfst-js)
+            </button>
+            <button id="clearBtn" class="btn btn-secondary btn-sm">
+              Clear
+            </button>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap;">
+            <button id="saveTreebankBtn" class="btn btn-success" title="Save completed sentence annotation as the next treebank in order in the accumulative file">
+              💾 Save Completed Treebank
+            </button>
+            <button id="saveAndNextBtn" class="btn btn-secondary" title="Save completed treebank and clear workspace for the subsequent sentence">
+              💾 Save & Next Sentence ➡️
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Annotation Status & Progress Dashboard -->
+    <section class="progress-dashboard">
+      <div class="progress-stats">
+        <div class="stat-item">
+          <span>Total Tokens:</span>
+          <span id="statTotalTokens" class="stat-val">0</span>
+        </div>
+        <div class="stat-item">
+          <span>Complete:</span>
+          <span id="statAnnotatedTokens" class="stat-val" style="color: var(--success);">0</span>
+        </div>
+        <div class="stat-item">
+          <span>Pending Glosses:</span>
+          <span id="statPendingGlosses" class="stat-val" style="color: var(--warning);">0</span>
+        </div>
+        <div class="stat-item">
+          <span>Progress:</span>
+          <span id="progressPercent" class="stat-val">0%</span>
+        </div>
+      </div>
+
+      <div class="progress-bar-wrapper">
+        <div id="progressBarFill" class="progress-bar-fill"></div>
+      </div>
+
+      <div class="dashboard-actions">
+        <button id="autoSelectBtn" class="btn btn-secondary btn-sm" title="Auto-select first reading and gloss candidate">
+          ✨ Auto-select Best
+        </button>
+        <button id="nextIncompleteBtn" class="btn btn-secondary btn-sm" title="Jump to next token needing annotation">
+          🔍 Next Incomplete
+        </button>
+        <span id="accumulativeTreebankBadge" class="panel-badge" style="background: #ecfdf5; color: #047857; font-weight: 700; cursor: pointer; margin-left: auto; border: 1px solid #a7f3d0;" title="Click to view/manage accumulated treebanks">
+          📦 Accumulative Treebank: <span id="accumulativeBadgeCount">0</span> sentences
+        </span>
+      </div>
+    </section>
+
+    <!-- 3. Parallel Interlinear Glossing Workspace -->
+    <section class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span>🔬 2. Interlinear Morphological & Glossing Workspace</span>
+          <span class="panel-badge">Parallel Token-by-Token Readings & Dictionary Lookups</span>
+        </div>
+        <div class="workspace-header-controls" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <!-- Explicit Language Selection for Dictionary Gloss -->
+          <div class="lang-picker-group">
+            <span class="lang-label">Default Target:</span>
+            <select id="workspaceGlossLangSelect" class="lang-select" title="Default Translation Target Language: shows up first, while other languages remain accessible">
+              <option value="all" selected>🌐 All Languages (all)</option>
+              <option value="eng">English (eng)</option>
+              <option value="por">Portuguese (por)</option>
+              <option value="fin">Finnish (fin)</option>
+              <option value="rus">Russian (rus)</option>
+              <option value="deu">German (deu)</option>
+              <option value="swe">Swedish (swe)</option>
+              <option value="est">Estonian (est)</option>
+              <option value="fra">French (fra)</option>
+              <option value="spa">Spanish (spa)</option>
+              <option value="mdf">Moksha (mdf)</option>
+              <option value="myv">Erzya (myv)</option>
+              <option value="sme">North Sami (sme)</option>
+              <option value="custom">Custom ISO...</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="tokensContainer" class="interlinear-workspace">
+          <!-- Token cards injected here by controller -->
+        </div>
+
+        <!-- 4. Sentence Translations Section -->
+        <div class="translations-area">
+          <div class="translations-header">
+            <span style="font-weight: 700; font-size: 13px;">🌍 Translations (Multiple ISO Languages Supported):</span>
+            <button id="addTranslationBtn" class="btn btn-secondary btn-sm">
+              + Add Translation Language
+            </button>
+          </div>
+          <div id="translationsList">
+            <!-- Dynamic translation rows injected here -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Multi-Format Export Section -->
+    <section class="panel">
+      <div class="panel-header" style="padding-bottom: 0;">
+        <div class="panel-title">
+          <span>📤 3. Multi-Format Export</span>
+        </div>
+      </div>
+
+      <div class="export-tabs">
+        <div class="export-tab active" data-format="conllu">
+          1. Universal Dependencies (CoNLL-U)
+        </div>
+        <div class="export-tab" data-format="interlinear">
+          2. Linguistic Output (MS Word / LibreOffice)
+        </div>
+        <div class="export-tab" data-format="verdd">
+          3. Ve'rdd Development Output
+        </div>
+      </div>
+
+      <div class="panel-body">
+        <!-- Treebank Accumulator Bar -->
+        <div class="treebank-management-bar" style="background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;">
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <span style="font-weight: 700; font-size: 13px;">📦 Accumulative Treebank:</span>
+            <span id="accumulativeCountPill" class="panel-badge" style="background: #ecfdf5; color: #047857; font-weight: 700; border: 1px solid #a7f3d0;">
+              0 sentences saved
+            </span>
+            <div class="radio-group" style="display: inline-flex; gap: 12px; margin-left: 8px; font-size: 13px;">
+              <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                <input type="radio" name="exportScope" value="current" checked id="scopeCurrentRadio">
+                Current Sentence
+              </label>
+              <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                <input type="radio" name="exportScope" value="accumulated" id="scopeAccumulatedRadio">
+                Accumulated Treebank (All in One File)
+              </label>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button id="downloadAccumulativeFileBtn" class="btn btn-primary btn-sm" title="Download several treebanks saved in the same accumulative file (.conllu)">
+              💾 Download Accumulative File (.conllu)
+            </button>
+            <button id="downloadSimultaneousBtn" class="btn btn-secondary btn-sm" title="Download all accumulated treebanks simultaneously as separate individual files">
+              ⚡ Download All Simultaneously
+            </button>
+            <button id="removeAccumulativeFileBtn" class="btn btn-secondary btn-sm" style="color: #b91c1c; border-color: #fca5a5;" title="Manually remove the accumulative file (clears all saved treebanks)">
+              🗑️ Remove Accumulative File
+            </button>
+            <button id="toggleTreebankListBtn" class="btn btn-secondary btn-sm" title="View/manage list of accumulated treebank sentences">
+              📋 View List (<span id="treebankListCount">0</span>)
+            </button>
+          </div>
+        </div>
+
+        <!-- Accumulated Treebanks Drawer Table -->
+        <div id="accumulatedTreebanksDrawer" style="display: none; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-weight: 700; font-size: 13px;">Saved Treebank Sentences (In Order)</span>
+            <span style="font-size: 12px; color: var(--text-muted);">Load back into workspace or download individually</span>
+          </div>
+          <div style="max-height: 200px; overflow-y: auto;">
+            <table class="dict-table" style="width: 100%; font-size: 12px;">
+              <thead>
+                <tr>
+                  <th style="width: 50px;">#</th>
+                  <th style="width: 50px;">Lang</th>
+                  <th>Text Preview</th>
+                  <th style="width: 60px;">Words</th>
+                  <th style="width: 80px;">Translations</th>
+                  <th style="width: 150px; text-align: right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="accumulatedTreebanksTableBody">
+                <tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 12px;">No treebanks saved yet. Annotate a sentence and click "Save Completed Treebank".</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <pre id="exportPreview" class="export-preview-box">(No analysis output yet. Click Analyze above.)</pre>
+
+        <div class="export-actions">
+          <button id="renewConlluBtn" class="btn btn-secondary" title="Re-sync and renew all readings with current Lemma and UPOS for CoNLL-U output">
+            🔄 Renew All CoNLL-U Readings
+          </button>
+          <button id="copyExportBtn" class="btn btn-primary">
+            📋 Copy to Clipboard
+          </button>
+          <button id="copyTableBtn" class="btn btn-success" title="Pastes as an aligned table directly into MS Word and LibreOffice Writer!">
+            📑 Copy Formatted Word/LibreOffice Table
+          </button>
+          <button id="downloadExportBtn" class="btn btn-secondary">
+            💾 Download File
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Ve'rdd Workbench: send entries to Ve'rdd and edit what is there (js/controllers/verdd-panel.js) -->
+    <section class="panel" id="verddWorkbenchPanel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span>🗂️ 4. Ve'rdd Workbench</span>
+        </div>
+        <span id="verddStatusBadge" class="panel-badge">Not connected</span>
+      </div>
+      <div class="panel-body" id="verddWorkbench"></div>
+    </section>
+
+  </main>
+
+  <!-- Models & Dictionaries Management Modal -->
+  <div id="settingsModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title">⚙️ Manage HFST Models & Dictionaries</div>
+        <button id="closeSettingsBtn" class="modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- 1. Morphological Analyzer Model Info -->
+        <h4 style="margin-bottom: 8px; color: var(--primary);">1. Morphological Analyzer Transducer</h4>
+        <div style="background: var(--surface-alt); padding: 12px; border-radius: var(--radius-md); margin-bottom: 16px;">
+          <div><strong>Active Analyser:</strong> <span id="activeAnalyserName">Loading...</span></div>
+          <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <span>Download nightly UralicNLP model:</span>
+            <select id="nightlyModelLang" class="lang-select">
+              <option value="myv">myv (Erzya)</option>
+              <option value="fin">fin (Finnish)</option>
+              <option value="sms">sms (Skolt Sami)</option>
+              <option value="kpv">kpv (Komi-Zyrian)</option>
+              <option value="mdf">mdf (Moksha)</option>
+              <option value="mhr">mhr (Meadow Mari)</option>
+              <option value="mrj">mrj (Hill Mari)</option>
+              <option value="olo">olo (Livvi-Karelian)</option>
+              <option value="fkv">fkv (Kven)</option>
+              <option value="sme">sme (North Sami)</option>
+              <option value="smn">smn (Inari Sami)</option>
+              <option value="udm">udm (Udmurt)</option>
+              <option value="koi">koi (Komi-Permyak)</option>
+              <option value="vro">vro (Võro)</option>
+              <option value="est">est (Estonian)</option>
+              <option value="apu">apu (Apurinã)</option>
+              <option value="custom">Custom ISO...</option>
+            </select>
+            <input type="text" id="nightlyModelLangCustomInput" placeholder="iso" style="display: none; width: 65px; font-size: 12px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px;">
+            <button id="downloadModelBtn" class="btn btn-secondary btn-sm">⬇️ Download & Activate</button>
+            <label class="btn btn-secondary btn-sm" style="cursor: pointer;">
+              📁 Upload .hfstol Analyser
+              <input type="file" id="uploadModelInput" accept=".hfstol,.hfst" style="display: none;">
+            </label>
+          </div>
+          <!-- Download Progress Indicator -->
+          <div id="modelDownloadProgress" style="display: none; margin-top: 8px;">
+            <div style="font-size: 11px; margin-bottom: 2px;" id="modelDownloadText">Downloading...</div>
+            <div class="progress-bar-wrapper">
+              <div id="modelProgressBar" class="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Dictionary Transducer -->
+        <h4 style="margin-bottom: 8px; color: var(--primary);">2. Dictionary Transducer (UralicNLP dictionary-fst)</h4>
+        <div style="background: var(--surface-alt); padding: 12px; border-radius: var(--radius-md); margin-bottom: 16px;">
+          <div><strong>Active Dictionary:</strong> <span id="activeDictName">Loading...</span></div>
+          <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button id="downloadDictBtn" class="btn btn-secondary btn-sm">⬇️ Download Full UralicNLP Dictionary FST</button>
+            <label class="btn btn-secondary btn-sm" style="cursor: pointer;">
+              📁 Upload .hfstol Dictionary
+              <input type="file" id="uploadDictInput" accept=".hfstol,.hfst" style="display: none;">
+            </label>
+          </div>
+          <!-- Dict Download Progress -->
+          <div id="dictDownloadProgress" style="display: none; margin-top: 8px;">
+            <div style="font-size: 11px; margin-bottom: 2px;" id="dictDownloadText">Downloading...</div>
+            <div class="progress-bar-wrapper">
+              <div id="dictProgressBar" class="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Default Translation Target Language Setting -->
+          <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);">
+            <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px; color: var(--text-main);">Default Translation Target Language:</div>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <select id="settingsDefaultTgtLang" class="lang-select" style="min-width: 250px;" title="Default translation target language: shows up first, while others remain accessible">
+                <option value="all">🌐 All Languages (all)</option>
+                <option value="eng">English (eng)</option>
+                <option value="fin">Finnish (fin)</option>
+                <option value="rus">Russian (rus)</option>
+                <option value="deu">German (deu)</option>
+                <option value="por">Portuguese (por)</option>
+                <option value="swe">Swedish (swe)</option>
+                <option value="est">Estonian (est)</option>
+                <option value="nob">Norwegian Bokmål (nob)</option>
+                <option value="fra">French (fra)</option>
+                <option value="spa">Spanish (spa)</option>
+                <option value="myv">Erzya (myv)</option>
+                <option value="mdf">Moksha (mdf)</option>
+                <option value="sme">North Sámi (sme)</option>
+                <option value="smn">Inari Sámi (smn)</option>
+                <option value="sms">Skolt Sámi (sms)</option>
+                <option value="kpv">Komi-Zyrian (kpv)</option>
+                <option value="koi">Komi-Permyak (koi)</option>
+                <option value="udm">Udmurt (udm)</option>
+                <option value="mhr">Meadow Mari (mhr)</option>
+                <option value="mrj">Hill Mari (mrj)</option>
+                <option value="olo">Livvi-Karelian (olo)</option>
+                <option value="custom">Custom ISO...</option>
+              </select>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+              The chosen target language will be the first to show up in token cards and dictionary lookups, while all other offered translations remain accessible.
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Custom User Dictionaries (Requirement: "Make it possible to add own dictionaries") -->
+        <h4 style="margin-bottom: 8px; color: var(--primary);">3. Custom User Lexicon (Add & Edit Your Own Glosses)</h4>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+          Add custom lemma-to-gloss translations. These entries take priority over the transducers and persist in your browser.
+        </p>
+
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <button id="addEntryBtn" class="btn btn-primary btn-sm">+ Add Single Entry</button>
+          <button id="importDictBtn" class="btn btn-secondary btn-sm">📥 Import TSV / CSV / JSON / Lexc</button>
+          <button id="exportDictBtn" class="btn btn-secondary btn-sm">📤 Export Custom TSV</button>
+        </div>
+
+        <div class="dict-table-container">
+          <table class="dict-table">
+            <thead>
+              <tr>
+                <th>Lemma</th>
+                <th>POS</th>
+                <th>Gloss</th>
+                <th>Lang</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="customEntriesTableBody">
+              <!-- Custom entries rows injected here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button onclick="document.getElementById('settingsModal').classList.remove('open')" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for Treebank Editing, Annotation & Dependency Visualization -->
+  <div id="treebankAnnotateModal" class="modal-overlay">
+    <div class="modal-dialog modal-annotate-treebank">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 20px;">🌲</span>
+          <div>
+            <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+              <span>Universal Dependencies Treebank Annotator</span>
+              <span id="annotateTbIdBadge" class="treebank-order-badge">#1</span>
+              <span id="annotateTbLangBadge" class="gloss-lang-badge">sms</span>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted);">
+              Annotate dependency relations (HEAD &amp; DEPREL), customize language subtypes, and draw visual dependency trees
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button id="prevTreebankBtn" class="btn btn-secondary btn-sm" title="Go to previous treebank in accumulative file">◀ Prev</button>
+          <button id="nextTreebankBtn" class="btn btn-secondary btn-sm" title="Go to next treebank in accumulative file">Next ▶</button>
+          <button id="closeAnnotateModalBtn" class="modal-close">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <!-- Sentence Toolbar -->
+        <div class="annotate-tb-toolbar">
+          <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+            <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Sentence:</span>
+            <span id="annotateTbSentText" class="annotate-tb-sent-text"></span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span id="annotateTbValidationBadge" class="dep-validation-pill valid">
+              ✓ Valid UD Tree
+            </span>
+            <button id="suggestDependenciesBtn" class="btn btn-secondary btn-sm" title="Heuristically infer baseline dependency heads &amp; deprels">
+              ⚡ Suggest Baseline
+            </button>
+            <button id="toggleManageRelationsBtn" class="btn btn-secondary btn-sm" title="Manage custom dependency relation labels for this language">
+              ⚙️ Language Relations
+            </button>
+            <div class="annotate-view-tabs">
+              <button id="viewTabVisualBtn" class="view-tab-btn active" title="Visual Dependency Arc Graph">🌲 Graph</button>
+              <button id="viewTabTableBtn" class="view-tab-btn" title="Token Table Editor">📋 Table</button>
+              <button id="viewTabConlluBtn" class="view-tab-btn" title="Raw CoNLL-U Preview">📄 CoNLL-U</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Language Relations Manager Drawer (collapsible) -->
+        <div id="languageRelationsDrawer" class="language-relations-drawer" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-weight: 700; font-size: 13px;">
+              Dependency Relations for Language: <span id="relationsDrawerLangCode" style="color: var(--primary);"></span>
+            </div>
+            <button id="resetLanguageRelationsBtn" class="btn btn-secondary btn-sm" style="font-size: 11px;" title="Reset to standard UD relations">
+              ↺ Reset to UD Defaults
+            </button>
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+            You can modify and add custom dependency relations beyond the UD standard for this language (e.g. <code>compound:svc</code>, <code>obl:agent</code>, <code>nsubj:cop</code>).
+          </div>
+          
+          <!-- Custom Relations Tags List -->
+          <div id="customRelationsTagsContainer" style="display: flex; flex-wrap: wrap; margin-bottom: 10px;"></div>
+
+          <!-- Add Custom Relation Form -->
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: #ffffff; padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+            <input type="text" id="newDeprelInput" placeholder="New relation label (e.g. compound:svc)" style="padding: 5px 8px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; width: 220px;">
+            <input type="text" id="newDeprelDescInput" placeholder="Description / linguistic note" style="padding: 5px 8px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; flex: 1;">
+            <button id="addNewDeprelBtn" class="btn btn-primary btn-sm">➕ Add Relation</button>
+          </div>
+        </div>
+
+        <!-- View 1: Interactive Dependency Arc Visualizer -->
+        <div id="visualArcViewContainer">
+          <div id="dependencyVisualizerCanvas" class="dependency-visualizer-container">
+            <!-- SVG generated here -->
+          </div>
+          <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
+            <span>💡 <strong>Tip:</strong> Click any token card to select it. Click another token to set HEAD, or use the token editor controls below.</span>
+            <span id="activeSelectionHint" style="font-weight: 600; color: var(--primary);"></span>
+          </div>
+        </div>
+
+        <!-- View 2: Token Table Editor -->
+        <div id="tokenTableViewContainer" style="display: none;">
+          <div class="token-table-container">
+            <table class="token-table">
+              <thead>
+                <tr>
+                  <th style="width: 40px;">ID</th>
+                  <th style="width: 120px;">FORM</th>
+                  <th style="width: 120px;">LEMMA</th>
+                  <th style="width: 80px;">UPOS</th>
+                  <th style="width: 100px;">HEAD</th>
+                  <th style="width: 140px;">DEPREL</th>
+                  <th>FEATS</th>
+                </tr>
+              </thead>
+              <tbody id="tokenTableBody">
+                <!-- Editable rows rendered here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- View 3: CoNLL-U Raw Text Preview -->
+        <div id="conlluRawViewContainer" style="display: none;">
+          <pre id="annotateConlluPreview" class="export-preview-box" style="max-height: 320px; font-size: 12px;"></pre>
+        </div>
+
+        <!-- Selected Token Quick Annotation Controls (below graph) -->
+        <div id="selectedTokenQuickControls" style="background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <span style="font-weight: 700; font-size: 13px;">Selected: <strong id="quickTokName" style="color: var(--primary);">-</strong></span>
+          
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted);">Text (FORM):</label>
+            <input type="text" id="quickFormInput" class="tb-input-sm" style="width: 130px;" placeholder="Word form" title="Edit surface word text">
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted);">LEMMA:</label>
+            <input type="text" id="quickLemmaInput" class="tb-input-sm" style="width: 120px;" placeholder="Lemma" title="Edit lemma">
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted);">UPOS:</label>
+            <select id="quickUposSelect" class="tb-input-sm" style="width: 90px;"></select>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted);">HEAD:</label>
+            <select id="quickHeadSelect" class="tb-input-sm" style="width: 140px;"></select>
+            <button id="quickSetRootBtn" class="btn btn-secondary btn-sm" style="font-size: 11px;" title="Set this token as ROOT (HEAD=0, DEPREL=root)">⭐ Set Root</button>
+            <button id="quickConnectHeadBtn" class="btn btn-secondary btn-sm" style="font-size: 11px;" title="Click another token in the graph to connect it as HEAD">🔗 Connect Head</button>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted);">DEPREL:</label>
+            <select id="quickDeprelSelect" class="tb-input-sm" style="width: 160px;"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button id="downloadThisAnnotatedConlluBtn" class="btn btn-secondary btn-sm" title="Download this single treebank as .conllu">
+          ⬇️ Download This Sentence (.conllu)
+        </button>
+        <div style="display: flex; gap: 8px;">
+          <button id="cancelAnnotateBtn" class="btn btn-secondary">Cancel</button>
+          <button id="saveAnnotatedTreebankBtn" class="btn btn-primary" style="font-weight: 700;">
+            💾 Save Treebank Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for Post-Download Manual Removal of Accumulative File -->
+  <div id="treebankDownloadModal" class="modal-overlay">
+    <div class="modal-dialog" style="max-width: 500px;">
+      <div class="modal-header">
+        <div class="modal-title">📦 Accumulative Treebank Download</div>
+        <button id="closeDownloadModalBtn" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body" style="font-size: 14px; line-height: 1.6;">
+        <p><strong style="color: var(--success);">✓ Download started!</strong> <span id="downloadModalSummary">Your accumulative treebank file has been generated.</span></p>
+        <p style="color: var(--text-muted); margin-top: 10px;">
+          The download of your accumulative treebank is complete. Would you like to <strong>manually remove the accumulative file</strong> now so that subsequent sentences can form a new accumulative treebank, or keep it accumulated?
+        </p>
+      </div>
+      <div class="modal-footer" style="gap: 10px;">
+        <button id="modalKeepAccumulativeBtn" class="btn btn-secondary">Keep Accumulative File</button>
+        <button id="modalRemoveAccumulativeBtn" class="btn btn-secondary" style="background: #fee2e2; border-color: #fca5a5; color: #991b1b; font-weight: 700;">🗑️ Remove Accumulative File</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Two-Level Morphology Paradigm Discoverer Modal (Koskenniemi twol / LexC / LexD) -->
+  <div id="paradigmModal" class="modal-overlay">
+    <div class="modal-dialog paradigm-modal-dialog">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">🧩 Paradigm Discoverer (Koskenniemi twol • LexC • LexD)</div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+            Human-in-the-Loop Finite-State Paradigm Induction, Morphophonemic Derivation, and Stem Regex Classification
+          </div>
+        </div>
+        <button id="closeParadigmBtn" class="modal-close">&times;</button>
+      </div>
+
+      <!-- Navigation Tabs & Stem Isolation Switch -->
+      <div class="paradigm-tabs-bar" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-right: 14px; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+        <div class="paradigm-tabs" style="border-bottom: none; margin-bottom: 0;">
+          <div class="paradigm-tab active" data-tab="input">1. Input & Expansion</div>
+          <div class="paradigm-tab" data-tab="grid">2. Human-in-the-Loop Grid</div>
+          <div class="paradigm-tab" data-tab="twol">3. TWOL Rules & LexC/LexD</div>
+          <div class="paradigm-tab" data-tab="classifier">4. Stem Regex & New Word Classifier</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <label class="paradigm-switch-label" style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; cursor: pointer; user-select: none; color: var(--text-main);" title="Switch between isolating the inflected head stem (filter +Cmp/# and +Guess) or preserving full compound tags (+Cmp) and guessed readings (+Guess) for paradigm discovery">
+            <input type="checkbox" id="paradigmIsolateStemToggle" checked style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--primary);">
+            <span>Isolate Inflected Stem (filter +Cmp / +Guess)</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Tab 1: Input & Expansion -->
+      <div id="paneParadigmInput" class="paradigm-pane active">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; background: var(--surface-alt); padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+          <!-- Explicit Language Selection for Paradigm -->
+          <div class="lang-picker-group" style="display: flex; align-items: center; gap: 6px;">
+            <span class="lang-label" style="font-weight: 700; font-size: 12px;">Language:</span>
+            <select id="paradigmLangSelect" class="lang-select" title="Indicate Language for Paradigm Forms (ISO 639-3)" style="min-width: 140px; font-weight: 600;">
+              <option value="vro" selected>vro (Võro)</option>
+              <option value="fin">fin (Finnish)</option>
+              <option value="myv">myv (Erzya)</option>
+              <option value="sms">sms (Skolt Sami)</option>
+              <option value="kpv">kpv (Komi-Zyrian)</option>
+              <option value="mdf">mdf (Moksha)</option>
+              <option value="mhr">mhr (Meadow Mari)</option>
+              <option value="mrj">mrj (Hill Mari)</option>
+              <option value="olo">olo (Livvi-Karelian)</option>
+              <option value="fkv">fkv (Kven)</option>
+              <option value="sme">sme (North Sami)</option>
+              <option value="smn">smn (Inari Sami)</option>
+              <option value="udm">udm (Udmurt)</option>
+              <option value="koi">koi (Komi-Permyak)</option>
+              <option value="est">est (Estonian)</option>
+              <option value="custom">Custom ISO...</option>
+            </select>
+            <input type="text" id="paradigmLangCustomInput" placeholder="iso" style="display: none; width: 65px; font-size: 12px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px;">
+          </div>
+
+          <!-- Model Presets Dropdown -->
+          <div style="display: flex; gap: 6px; align-items: center; flex: 1; min-width: 220px;">
+            <span style="font-size: 12px; font-weight: 700; color: var(--text-muted); white-space: nowrap;">Model / Preset:</span>
+            <select id="paradigmPresetSelect" class="lang-select" style="flex: 1; min-width: 180px;"></select>
+          </div>
+
+          <!-- Actions -->
+          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            <button id="newParadigmBtn" class="btn btn-secondary btn-sm" title="Clear input to enter your own custom word forms and tags">➕ New Input</button>
+            <button id="discoverParadigmBtn" class="btn btn-primary btn-sm" title="Parse tags and align forms into zero-filled morphophonemic matrix">⚡ Discover & Align</button>
+            <button id="saveParadigmModelBtn" class="btn btn-success btn-sm" title="Save this paradigm model to library for testing in Classifier">💾 Save Model</button>
+            <button id="clearParadigmInputBtn" class="btn btn-secondary btn-sm" title="Clear input text">Clear</button>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+          <label for="paradigmInputText" style="font-size: 12.5px; font-weight: 700; color: var(--text-main);">
+            Input Word Forms & Adjoining Tags:
+          </label>
+          <span style="font-size: 11.5px; color: var(--text-muted);">
+            Syntax: <code>lemma+POS+Tags: surface_form</code> or <code>tag surface_form</code> (one per line)
+          </span>
+        </div>
+
+        <textarea id="paradigmInputText" class="input-textarea" style="height: 130px; font-family: var(--font-mono); font-size: 12.5px;" placeholder="Input paradigm forms for indicated language (e.g.&#10;kand+N+Sg+Nom: kand&#10;kand+N+Sg+Gen: kanno&#10;kand+N+Sg+Par: kando&#10;kand+N+Pl+Gen: kandõ&#10;kand+N+Pl+Ine: kannõn)"></textarea>
+
+        <div style="margin-top: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 13px; font-weight: 700;">Aligned Expansion (twol-words2zerofilled):</span>
+            <span id="paradigmFormulaBadge" class="paradigm-formula-badge">Formula: (Click Discover above)</span>
+          </div>
+          <pre id="paradigmAlignedOutput" class="code-export-box" style="max-height: 160px;">(Click "⚡ Discover & Align Paradigm" to expand forms into letter-by-letter zero-filled alignment)</pre>
+        </div>
+      </div>
+
+      <!-- Tab 2: Human-in-the-Loop Grid & Morphophonemes -->
+      <div id="paneParadigmGrid" class="paradigm-pane">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <span style="font-weight: 700; font-size: 13px;">Morphophonemic Matrix & Custom Renaming:</span>
+            <div style="font-size: 11.5px; color: var(--text-muted);">
+              Inspect letter-by-letter columns, customize morphophoneme names (e.g. rename <code>{d:d, d:n}</code> to <code>D</code> or <code>{0oõ}</code> to <code>O</code>), and re-derive.
+            </div>
+          </div>
+          <button id="rederiveParadigmBtn" class="btn btn-primary btn-sm">🔄 Re-derive with Custom Names</button>
+        </div>
+
+        <div id="morphRenamingBar" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: var(--surface-alt); padding: 10px; border-radius: var(--radius-sm); margin-bottom: 12px; border: 1px solid var(--border-light);">
+          <!-- Dynamic custom rename inputs inserted here -->
+        </div>
+
+        <div id="paradigmMatrixContainer" style="overflow-x: auto;">
+          <!-- Matrix table rendered here -->
+        </div>
+      </div>
+
+      <!-- Tab 3: Two-Level Rules (TWOL), LexC, and LexD -->
+      <div id="paneParadigmTwol" class="paradigm-pane">
+        <!-- Sub-tabs for FST formalisms -->
+        <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center; justify-content: space-between;">
+          <div style="display: flex; gap: 6px;">
+            <button id="showTwolCodeBtn" class="btn btn-primary btn-sm">Two-Level Rules (TWOL)</button>
+            <button id="showLexcCodeBtn" class="btn btn-secondary btn-sm">LexC Grammar</button>
+            <button id="showLexdCodeBtn" class="btn btn-secondary btn-sm">LexD Patterns</button>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="copyGrammarCodeBtn" class="btn btn-secondary btn-sm">📋 Copy Current Grammar</button>
+            <button id="downloadAllGrammarBtn" class="btn btn-success btn-sm">💾 Download Grammar</button>
+          </div>
+        </div>
+
+        <pre id="grammarCodeDisplay" class="code-export-box" style="max-height: 320px;">(Discover paradigm first to generate TWOL, LexC, and LexD formalisms)</pre>
+      </div>
+
+      <!-- Tab 4: Stem Regex & New Word Classifier -->
+      <div id="paneParadigmClassifier" class="paradigm-pane">
+        <!-- 1. Discovered Stem Regular Expression -->
+        <div style="background: var(--surface-alt); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border); margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <div style="font-weight: 700; font-size: 13px; color: var(--primary);">Discovered Stem Regular Expression:</div>
+            <span id="classifierModelLangBadge" class="panel-badge" style="background: #e0f2fe; color: #0369a1; font-weight: 700;">Language: vro</span>
+          </div>
+          <div id="stemRegexPatternDisplay" style="font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: #0369a1; background: #ffffff; padding: 6px 10px; border-radius: 4px; border: 1px solid #bae6fd; margin-bottom: 6px;">
+            ^([a-zõäöüšž]+)nd$
+          </div>
+          <div id="stemRegexExplanationDisplay" style="font-size: 12px; color: var(--text-muted);">
+            Matches base forms belonging to this stem class and coordinates with LexC / LexD for new word paradigm generation.
+          </div>
+        </div>
+
+        <!-- 2. LexC Regular-Expression Description (Lemma & Stem Guesser) -->
+        <div style="background: var(--surface-alt); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border); margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div style="font-weight: 700; font-size: 13px; color: var(--primary);">LexC Regular-Expression Description (Lemma &amp; Stem Guesser):</div>
+            <button id="copyLexcRegexRuleBtn" class="btn btn-secondary btn-sm" title="Copy LexC regular-expression rule">📋 Copy LexC Rule</button>
+          </div>
+          <div id="lexcRegexRuleDisplay" style="font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: #1e293b; background: #ffffff; padding: 8px 12px; border-radius: 4px; border: 1px solid #bae6fd; margin-bottom: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">
+            &lt; [b|d|f|g|h|j|k|l|m|n|p|r|s|t|v]* [a|o|u|õ] [0:"{kØ}" g:"{kgØ}"|0:"{tØ}" d:"{tdØ}"|0:"{pØ}" b:"{pbv}"] "o":0 "+N":0 "+Guess":0 "+N_39_vido":0 &gt; N_39VIDO ;
+          </div>
+          <div id="lexcRegexExplanationDisplay" style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+            One line of LexC regular-expression code describing lemma and stem: (1) consonant onset [b-v]*, (2) root vowel [a|o|u|õ], (3) stop gradation upper:lower morphophonemes (0:"{kØ}" g:"{kgØ}" | 0:"{tØ}" d:"{tdØ}" | 0:"{pØ}" b:"{pbv}"), (4) stem vowel "o":0, (5) zero-mapped tags ("+N":0 "+Guess":0 "+N_39_vido":0), (6) continuation lexicon N_39VIDO.
+          </div>
+        </div>
+
+        <!-- 3. Test New Word(s) / Classifier -->
+        <div style="background: #ffffff; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <div style="font-weight: 700; font-size: 13px;">Test New Word (Single or Multiple Forms, Paste or File Upload):</div>
+            <span id="classifierTestLangBadge" class="panel-badge" style="background: #f1f5f9; color: var(--text-muted); font-size: 11px;">Target Language: vro</span>
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+            Enter one or more forms of a word (write, paste comma/tab/newline-separated, or upload a CSV/TSV file). Forms will be matched against language transducer <code>+Guess</code> tags and systematic consonant gradation elimination rules.
+          </div>
+
+          <!-- Classifier Engine Switch Bar -->
+          <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+              <span style="font-weight: 600; font-size: 12px; color: #334155;">Morphological Engine Source:</span>
+              <span id="classifierActiveEngineBadge" class="panel-badge" style="background: #eff6ff; color: #1d4ed8; font-size: 11px; font-weight: 600; border: 1px solid #bfdbfe;">Engine: 🔀 Combined</span>
+            </div>
+            <div style="display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px;">
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="radio" name="classifierEngineChoice" value="combined" checked>
+                <span style="font-weight: 600; color: #1e293b;">🔀 Combined</span> <span style="color: var(--text-muted); font-size: 11px;">(UralicNLP FST + LangJack Twol)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="radio" name="classifierEngineChoice" value="uralicnlp">
+                <span style="font-weight: 600; color: #c2410c;">🌐 UralicNLP Transducer</span> <span style="color: var(--text-muted); font-size: 11px;">(+Guess FST: haik, ask...)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="radio" name="classifierEngineChoice" value="langjack">
+                <span style="font-weight: 600; color: #2563eb;">⚡ LangJack Two-Level</span> <span style="color: var(--text-muted); font-size: 11px;">(twol models: kand, vido...)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- UralicNLP Model In-Memory Status Indicator -->
+          <div id="classifierUralicNlpStatusContainer" style="display: flex; align-items: center; justify-content: space-between; background: #fffbeb; border: 1px solid #fef3c7; border-radius: var(--radius-sm); padding: 6px 12px; margin-bottom: 8px; font-size: 11.5px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span id="classifierUralicNlpStatusDot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #eab308;"></span>
+              <span id="classifierUralicNlpStatusText" style="color: #92400e; font-weight: 500;">UralicNLP vro transducer status</span>
+            </div>
+            <button id="classifierLoadUralicNlpBtn" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 2px 8px;">⬇️ Load / Download UralicNLP FST</button>
+          </div>
+
+          <!-- Multiline Textarea Input -->
+          <div style="margin-bottom: 8px;">
+            <textarea id="newWordTestInput" rows="2" placeholder="Write or paste one or more forms (e.g. tsiga or tsiga, tsia, tsika)..." style="width: 100%; box-sizing: border-box; padding: 8px 12px; font-size: 13px; font-family: var(--font-mono); border: 1px solid var(--border); border-radius: var(--radius-sm); resize: vertical;">tsiga</textarea>
+          </div>
+
+          <!-- Action Toolbar: Upload, Clear, Sample Chips, Classify Button -->
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <input type="file" id="classifyUploadFileInput" accept=".csv,.tsv,.txt" style="display: none;">
+              <button id="classifyUploadFileBtn" class="btn btn-secondary btn-sm" title="Upload a CSV or TSV file containing word forms">📁 Upload CSV / TSV</button>
+              <button id="clearClassifierInputBtn" class="btn btn-secondary btn-sm" title="Clear input">Clear</button>
+
+              <!-- Quick Sample Test Chips -->
+              <span style="font-size: 11px; color: var(--text-muted); margin-left: 4px;">Try samples:</span>
+              <button class="classifier-sample-chip btn btn-secondary btn-sm" data-forms="tsiga" style="font-size: 11px; padding: 2px 6px;">tsiga</button>
+              <button class="classifier-sample-chip btn btn-secondary btn-sm" data-forms="tsiga, tsia" style="font-size: 11px; padding: 2px 6px;" title="Consonant weakening (g -> Ø) eliminates Type 1 ungradated">tsiga, tsia</button>
+              <button class="classifier-sample-chip btn btn-secondary btn-sm" data-forms="tsiga, tsia, tsika" style="font-size: 11px; padding: 2px 6px;" title="Partitive tsika isolates Type 44">tsiga, tsia, tsika</button>
+              <button class="classifier-sample-chip btn btn-secondary btn-sm" data-forms="mindõ" style="font-size: 11px; padding: 2px 6px;" title="Test UralicNLP (+N_41_haik, +N_41_ask) vs LangJack (+N_41_kand)">mindõ</button>
+              <button class="classifier-sample-chip btn btn-secondary btn-sm" data-forms="talo, tallo" style="font-size: 11px; padding: 2px 6px;" title="Consonant lengthening (l -> ll) matches Type 40">talo, tallo</button>
+              <button class="classifier-sample-chip btn btn-secondary btn-sm" data-forms="kitto, kito" style="font-size: 11px; padding: 2px 6px;" title="Stop alternation matches Type 39 vido">kitto, kito</button>
+            </div>
+            <button id="classifyNewWordBtn" class="btn btn-primary">🔍 Classify &amp; Predict Full Paradigm</button>
+          </div>
+
+          <!-- Prediction Results Box -->
+          <div id="newWordPredictionContainer" style="display: none;">
+            <!-- Transducer vs LangJack Model Distinction Callout -->
+            <div id="distinctionNoteContainer" style="display: none; margin-bottom: 10px; padding: 10px 14px; border-radius: var(--radius-sm); font-size: 12px; line-height: 1.5; border: 1px solid #fed7aa; background: #fffaf0; color: #7c2d12;">
+              <div style="font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                <span>⚖️ Morphological Engine &amp; Model Distinction:</span>
+              </div>
+              <div id="distinctionNoteText"></div>
+            </div>
+
+            <!-- Top Prediction Status Banner -->
+            <div id="predictionBanner" style="padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; margin-bottom: 12px;"></div>
+
+            <!-- Step-by-Step Disambiguation & Narrowing Walkthrough -->
+            <div id="disambiguationWalkthroughContainer" style="display: none; margin-bottom: 12px; background: #f8fafc; padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid #e2e8f0;">
+              <div style="font-weight: 700; font-size: 12px; color: #1e293b; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                <span>🔬 Step-by-Step Disambiguation Walkthrough:</span>
+                <span id="gradationBadge" style="font-size: 11px; padding: 1px 6px; border-radius: 10px; background: #e0e7ff; color: #3730a3; display: none;">Consonant Gradation Detected</span>
+              </div>
+              <div id="disambiguationStepsList" style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #334155; line-height: 1.5;"></div>
+            </div>
+
+            <!-- Transducer +Guess & Morphological Readings Card -->
+            <div id="analyzerGuesserMatchesContainer" style="display: none; margin-bottom: 12px; background: #fdfbf7; padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid #fed7aa;">
+              <div style="font-weight: 700; font-size: 12px; color: #9a3412; margin-bottom: 6px;">
+                ⚡ Morphological Analyzer +Guess Readings:
+              </div>
+              <div id="analyzerGuesserMatchesList" style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #7c2d12;"></div>
+            </div>
+
+            <!-- Narrowing & Candidate Guesses Table/List (competing candidate paradigms) -->
+            <div id="candidateGuessesContainer" style="display: none; margin-bottom: 14px; background: var(--surface-alt); padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+              <div style="font-weight: 700; font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+                Candidate Guesses &amp; Elimination Status:
+              </div>
+              <div id="candidateGuessesList" style="display: flex; flex-direction: column; gap: 6px;"></div>
+            </div>
+
+            <!-- Full Predicted Paradigm Forms Table -->
+            <table class="predicted-table">
+              <thead>
+                <tr>
+                  <th style="width: 160px;">Grammatical Tag</th>
+                  <th>Predicted Surface Form</th>
+                  <th>Model Paradigm Analogy</th>
+                </tr>
+              </thead>
+              <tbody id="predictedFormsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: space-between;">
+        <span style="font-size: 11.5px; color: var(--text-muted);">
+          Reference: <a href="https://github.com/koskenni/twol" target="_blank" style="color: var(--primary);">koskenni/twol</a> • Two-Level Morphology & Paradigm Discoverer
+        </span>
+        <button id="closeParadigmFooterBtn" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast" class="toast">Notification message</div>
+
+  <!-- Application Controller -->
+  <script type="module" src="js/controllers/app.js"></script>
+</body>
+</html>
