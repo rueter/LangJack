@@ -4,4 +4,3 @@ scratch/
 .DS_Store
 models/*hfstol
 !models/bundled_*.hfstol
-!models/analyser-apu.hfstol
