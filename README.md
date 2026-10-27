@@ -56,7 +56,9 @@ The large morphological models are not stored in this repository. On first use L
      - Includes `# sent_id`, `# text`, and translations (`# text_eng = ...`, `# text_fin = ...`).
      - **Import / Enhance CoNLL-U…**: load an existing treebank (for example a UD `.conllu` file), add glosses from the dictionary, and export it again without losing anything.
        - The file is stored in your browser as an unchanged original (file name, import time, SHA-256); your edits are kept separately as small per-sentence changes. Sentences you did not edit are exported byte-for-byte as they were, including comments, string `sent_id`s, multiword ranges and every MISC key.
-       - **Suggest glosses** (per sentence or for the whole file) looks up each lemma in the dictionary and writes into MISC using the file's own convention (`gloss[pt]=` or `gloss_pt=`; the more frequent one wins). Existing glosses are never overwritten without confirmation; morpheme-segmented glosses such as `ver-3SG.M.O` that already contain the dictionary gloss are left alone.
+       - **Suggest** (per sentence or for the whole file) proposes values for the columns you tick under **Columns to enhance** (default: MISC only; ID and FORM are locked). Sources: LEMMA, UPOS, XPOS and FEATS from the analyzer reading; FEATS also from the grammatical morphemes of the existing gloss (for example `3SG.M.O` becomes `Person[obj]=3|Number[obj]=Sing|Gender[obj]=Masc`; the mapping table is shown in the panel); MISC from the dictionary, written with the file's own gloss key (`gloss[pt]=` or `gloss_pt=`; the more frequent one wins); HEAD/DEPREL baseline guesses only for sentences without any dependencies. DEPS has no source.
+       - Each proposal shows the old and the new value. Empty cells (`_`) are filled when you apply; a cell that already has a value is only changed if you tick it yourself and confirm (per token, per column with "all/none", per sentence, or file-wide). FEATS proposals only add features; existing values are kept. Rejecting a proposal writes nothing.
+       - **Feature inventory**: proposed FEATS pairs (and UPOS / DEPREL labels) are checked against the language, in this order: used in the imported file, in the language's own UD treebanks, universal UD features, other Uralic languages, other languages. A pair found in none is marked **new** and is only applied after you confirm it. The language follows the *Language of the text* box and can be changed under **Feature inventory** (or "None: only what this file uses"); a file opened with language `apu` defaults to the Apurinã layer. Non-UD MISC keys of a treebank (`gloss[pt]`, `CGdeprel`, `GTtags`, …) are listed as "seen" but are not part of the UD-valid layer. FEATS are kept sorted the UD way (case-insensitive, `Number` before `NumType`, `Gender` before `Gender[obj]`). You can also load a local `docfeats.json` from the UD tools to add the documented features.
        - Review the changes against the original per sentence, revert a sentence or everything, and **Download working copy** under a new default name (`<name>.enhanced.conllu`). Malformed rows are reported with their line numbers and kept as they are.
    - **Linguistic Interlinear Format (MS Word / LibreOffice)**:
      - Separate lines:
@@ -162,6 +164,22 @@ Lines starting with `#` are comments. Your own TSV, CSV, JSON or Lexc dictionari
 
 ---
 
+## Feature inventory data (`data/ud-feature-inventory.json`)
+
+A compact list of which Feature=Value pairs, UPOS tags and DEPREL labels each language uses in a set of [Universal Dependencies](https://universaldependencies.org) treebanks (Uralic languages: Erzya, Moksha, Komi, Skolt Sami, North Sami, Finnish, Estonian, Veps, Nenets, Karelian, Livvi, Old Permic; plus Apurinã, Cebuano, Munduruku, Makurap, Paumari and Tagabawa), with counts. It contains names and counts only (MISC by key name, never value): no sentences, words, lemmas or glosses. It is derived from the UD treebanks; each source treebank keeps its own license (listed in `meta.sources` of the file, together with where the license was read from). The script prefers a treebank's `LICENSE.txt` over its README header when they disagree, and warns about the mismatch. Most sources are CC BY-SA 4.0 (Finnish-FTB is CC BY 4.0). Treebanks with a non-commercial license are not used: the build script skips them by default (`--exclude-licenses` defaults to `-NC-`), so none is part of the inventory (`meta.nonCommercial` is empty). `UD_Estonian-EWT` is CC BY-SA 4.0 according to its `LICENSE.txt`.
+
+Rebuild it from local UD checkouts with:
+
+```bash
+node scripts/build-feature-inventory.mjs --root ~/Desktop/Github/ud
+```
+
+The script reads only the top-level `.conllu` files of each treebank folder (never `not-to-release` subfolders). If a folder has none in the working tree, it falls back, read-only (`git ls-tree` / `git show`, nothing is checked out), to `origin/dev`, then `origin/master`; this is how Tagabawa (`bgs`, data only on the dev branch) is read. A folder with no data anywhere is skipped with a warning.
+
+Feature checks use layers: the file itself, the language, universal UD, then pairs used by other languages. The "shared (Uralic)" layer applies to Uralic languages only; for any other language (Apurinã, Cebuano, …) pairs used by three or more other languages count as "widespread", and pairs used by one or two as "other". None of these needs confirmation; only a pair found in no layer does.
+
+---
+
 ## Testing
 
 Run all automated test suites via Node.js:
@@ -174,6 +192,8 @@ node test/test_renew_reading_upos.js
 node test/test_uralicnlp_renew_and_derived_upos.js
 node test/test_verdd_api_service.js
 node test/test_conllu_import.js
+node test/test_conllu_enhance.js
+node test/test_feature_inventory.js
 ```
 
 Some suites load analyzers from `models/`. Those files are not in the repository (see *Try it online*): download them first through the app, or copy them into `models/`.

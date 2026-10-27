@@ -1808,4 +1808,16 @@ body {
 .ci-rawdiff { margin-top: 6px; font-size: 12px; }
 .ci-export { border-top: 1px solid var(--border); padding-top: 10px; }
 @media (max-width: 640px) { .ci-main { grid-template-columns: 1fr; } .ci-list { max-height: 160px; } }
-
+.ci-columns { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12px; margin: 8px 0 2px; }
+.ci-locked { color: var(--text-muted); cursor: not-allowed; }
+.ci-old { font-size: 12px; color: var(--text-muted); word-break: break-word; }
+.ci-proposal { align-items: flex-start; margin-top: 2px; }
+.ci-proposal code { word-break: break-word; }
+.ci-note { font-size: 11px; color: var(--text-muted); }
+.ci-fill { color: #047857; }
+.ci-colactions { font-weight: 400; font-size: 11px; }
+.ci-mapping { max-width: 640px; margin: 6px 0; }
+.ci-filesummary .dict-table { background: var(--surface); }
+.ci-tablewrap td, .ci-tablewrap th { vertical-align: top; min-width: 70px; }
+.ci-tablewrap td code { overflow-wrap: anywhere; }
+.ci-tablewrap td:nth-child(n+3) { min-width: 120px; }

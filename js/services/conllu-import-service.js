@@ -10,12 +10,16 @@
 
 import { storageService } from './storage-service.js';
 import { dictionaryService } from './dictionary-service.js';
-import { analyzerService } from './analyzer-service.js';
+import { analyzerService, normalizeLangCode } from './analyzer-service.js';
 import { stripGuessTags } from './tag-mapper.js';
+import { featureInventory, usageOfFile } from './ud-feature-inventory.js';
+import {
+  ENHANCE_COLUMNS, LOCKED_COLUMNS, isEmptyCell, mergeFeats, featsFromGloss, summarizeReadings, baselineDependencies
+} from './conllu-enhance.js';
 import {
   parseConllu, serializeConllu, sentenceRaw, renderSentence, describeChanges, diffSentenceLines,
   detectGlossConvention, glossKeyFor, findExistingGloss, formatGlossValue, glossLangToIso3,
-  editCell, editMiscKey, editComment, revertSentence, hasOverrides, applyMiscEdits, CONLLU_COLUMNS
+  editCell, editMiscKey, editComment, revertSentence, hasOverrides, applyMiscEdits, parseMisc, parseGlossKey, CONLLU_COLUMNS
 } from './conllu-parser.js';
 
 async function hashText(text) {
@@ -38,8 +42,9 @@ export function defaultExportFileName(originalName) {
 }
 
 export class ConlluImportService {
-  constructor() {
+  constructor(inventory = featureInventory) {
     this.items = new Map(); // importId -> { meta, parsed, overrides, exportName }
+    this.inventory = inventory; // language-aware Feature=Value / UPOS / DEPREL inventory
   }
 
   /** Loads the list of previous imports (originals and working copies) from storage. */
@@ -362,6 +367,241 @@ export class ConlluImportService {
     }
     await this._persist(importId);
     return { written, replaced, skipped };
+  }
+
+  // ---- multi-column enhancement --------------------------------------------------------
+
+  /**
+   * Makes the analyzer for `srcLang` available for proposals, without disturbing the workbench: only a saved
+   * or packaged model is loaded (no download, no starter fallback), and the active analyzer stays as it was.
+   * @returns {Promise<boolean>} whether an analyzer for the language is available
+   */
+  async prepareLanguage(srcLang) {
+    const lang = normalizeLangCode(srcLang);
+    if (analyzerService.hasModelForLanguage(lang)) return true;
+    const keep = {
+      activeLang: analyzerService.activeLang, activeModelId: analyzerService.activeModelId,
+      activeModelName: analyzerService.activeModelName, isLoaded: analyzerService.isLoaded
+    };
+    try {
+      let buffer = null;
+      let id = `analyser-${lang}`;
+      let name = `${lang.toUpperCase()} Analyser`;
+      const saved = await storageService.getModel(`uralic_${lang}_analyser`);
+      if (saved && saved.buffer) {
+        ({ buffer, id, name } = { buffer: saved.buffer, id: saved.id, name: saved.name });
+      } else if (analyzerService.packagedModelPaths[lang]) {
+        const path = analyzerService.packagedModelPaths[lang];
+        const url = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL(path) : path;
+        const resp = await fetch(url);
+        if (resp.ok) buffer = await resp.arrayBuffer();
+      }
+      if (!buffer) return false;
+      await analyzerService.loadFromBuffer(buffer, id, name, lang, false);
+      return analyzerService.hasModelForLanguage(lang);
+    } catch (e) {
+      return false;
+    } finally {
+      Object.assign(analyzerService, keep);
+    }
+  }
+
+  /** What the imported file itself uses (cached): its own layer of the inventory. */
+  fileUsage(importId) {
+    const it = this._item(importId);
+    if (!it.usage) it.usage = usageOfFile(it.parsed);
+    return it.usage;
+  }
+
+  /**
+   * The inventory language to validate against: the explicit choice, else the language of the text. null means
+   * "none": only what this file uses counts (the case for a language without any treebank, such as Apurinã).
+   */
+  inventoryLanguage(srcLang, choice = 'auto') {
+    if (choice === 'none') return null;
+    return this.inventory.resolveLanguage(choice && choice !== 'auto' ? choice : srcLang);
+  }
+
+  /** Validates a column selection: ID and FORM are locked, anything unknown is refused. */
+  _checkColumns(columns) {
+    const list = [...new Set((columns && columns.length ? columns : ['misc']).map((c) => String(c).toLowerCase()))];
+    for (const c of list) {
+      if (LOCKED_COLUMNS.includes(c)) throw new Error(`${c.toUpperCase()} is locked: changing it would break token alignment and the sentence text.`);
+      if (!ENHANCE_COLUMNS.includes(c)) throw new Error(`Unknown column "${c}"`);
+    }
+    return list;
+  }
+
+  /** The gloss of a row (target language if present, otherwise the first gloss key). */
+  _rowGloss(misc, lang) {
+    const own = findExistingGloss(misc, lang);
+    if (own) return own.value || '';
+    const any = parseMisc(misc).find((seg) => parseGlossKey(seg.key));
+    return any ? (any.value || '') : '';
+  }
+
+  /**
+   * Proposes values for the chosen columns without writing anything. One entry per token and column:
+   * { sentIndex, lineIdx, tokenId, form, column, key?, from, to, status, source, note, candidates? }
+   * status: 'fill' (empty cell, may be filled), 'conflict' (a value exists and would change: needs
+   * explicit acceptance), 'same' (nothing to do), 'none' (no source for this token).
+   * Sources: LEMMA/UPOS/XPOS/FEATS from the analyzer reading (FEATS also from the grammatical morphemes of
+   * the existing gloss), HEAD/DEPREL baseline guesses for sentences without any dependencies, MISC from the
+   * dictionary. DEPS has no source. FEATS proposals only add features; existing values are never replaced.
+   * @param {string} importId
+   * @param {number|null} sentIndex  null = whole file
+   * Proposed UPOS / DEPREL values and FEATS pairs missing from every inventory layer (file, language, universal,
+   * Uralic, other languages) get `needsConfirm: true` and `newPairs`; applying them needs `confirmNew: true`.
+   * @param {{ srcLang: string, tgtLang?: string, columns?: string[], inventoryLang?: string }} options
+   *   inventoryLang: 'auto' (language of the text), 'none' (only what the file uses) or an inventory language code
+   */
+  suggestEnhancements(importId, sentIndex, { srcLang, tgtLang, columns, inventoryLang = 'auto' } = {}) {
+    const it = this._item(importId);
+    const invLang = this.inventoryLanguage(srcLang, inventoryLang);
+    const usage = this.fileUsage(importId);
+    // Flags values missing from every inventory layer: they are proposed but need the user's confirmation
+    const flag = (field, kind, items) => {
+      const checked = items.map((item) => this.inventory.classify(kind, item, { lang: invLang, file: usage[kind] }));
+      field.pairs = checked;
+      field.newPairs = checked.filter((c) => c.layer === 'new').map((c) => c.item);
+      field.needsConfirm = field.newPairs.length > 0;
+      return field;
+    };
+    const cols = this._checkColumns(columns);
+    const conv = detectGlossConvention(it.parsed);
+    const lang = tgtLang || conv.lang || 'eng';
+    const fields = [];
+    const useAnalyzer = analyzerService.hasModelForLanguage(srcLang);
+    const needsReading = cols.some((c) => ['lemma', 'upos', 'xpos', 'feats'].includes(c));
+    const indexes = sentIndex === null || sentIndex === undefined ? it.parsed.sentences.map((s) => s.index) : [sentIndex];
+
+    for (const idx of indexes) {
+      const sentence = it.parsed.sentences[idx];
+      const words = this._wordRows(sentence).map(({ lineIdx }) => ({ lineIdx, cols: this.workingCols(importId, idx, lineIdx) }));
+      const base = (w) => ({ sentIndex: idx, lineIdx: w.lineIdx, tokenId: w.cols[0], form: w.cols[1] });
+
+      if (cols.includes('head') || cols.includes('deprel')) {
+        const guesses = baselineDependencies(words.map((w) => ({ id: w.cols[0], upos: w.cols[3], head: w.cols[6] })));
+        words.forEach((w, i) => {
+          const g = guesses[i];
+          if (!g) return;
+          for (const [column, col, value] of [['head', 6, g.head], ['deprel', 7, g.deprel]]) {
+            if (!cols.includes(column) || !isEmptyCell(w.cols[col])) continue;
+            const field = { ...base(w), column, from: w.cols[col], to: value, status: 'fill', source: 'baseline guess from UPOS order', note: '' };
+            fields.push(column === 'deprel' ? flag(field, 'deprel', [value]) : field);
+          }
+        });
+      }
+
+      for (const w of words) {
+        const [, form, lemma, upos, xpos, feats] = w.cols;
+        const punct = upos === 'PUNCT' || /^[\p{P}\p{S}]+$/u.test(form);
+        if (punct) continue;
+
+        let reading = null;
+        if (needsReading && useAnalyzer) {
+          try {
+            reading = summarizeReadings(analyzerService.analyze_word(form, srcLang), { lemma, upos });
+          } catch (e) {
+            reading = null; // analyzer failed for this word: no proposal from it
+          }
+        }
+        const simple = (column, current, proposed) => {
+          if (!reading || !proposed) return;
+          let status = 'same';
+          if (current !== proposed) status = isEmptyCell(current) ? 'fill' : 'conflict';
+          const field = {
+            ...base(w), column, from: current, to: proposed, status, source: 'analyzer',
+            note: reading.readings > 1 ? `${reading.readings} matching readings; first used` : ''
+          };
+          fields.push(column === 'upos' && status !== 'same' ? flag(field, 'upos', [proposed]) : field);
+        };
+        if (cols.includes('lemma') && reading) simple('lemma', lemma, reading.lemma);
+        if (cols.includes('upos') && reading) simple('upos', upos, reading.upos);
+        if (cols.includes('xpos') && reading) simple('xpos', xpos, reading.xpos);
+
+        if (cols.includes('feats')) {
+          const gloss = featsFromGloss(this._rowGloss(w.cols[9], lang), upos);
+          const proposed = new Map(gloss.feats);
+          const sources = [];
+          if (gloss.feats.size) sources.push('gloss');
+          if (reading && reading.feats.size) {
+            for (const [k, v] of reading.feats) proposed.set(k, v);
+            sources.push('analyzer');
+          }
+          if (proposed.size) {
+            const merge = mergeFeats(feats, proposed);
+            const notes = [];
+            if (merge.differing.length) notes.push(`kept existing ${merge.differing.map((d) => `${d.key}=${d.have} (source: ${d.proposed})`).join(', ')}`);
+            if (gloss.unmapped.length) notes.push(`unmapped gloss: ${gloss.unmapped.join(', ')}`);
+            if (reading && reading.readings > 1) notes.push(`${reading.readings} readings: shared features only`);
+            let status = 'same';
+            if (merge.added.length) status = isEmptyCell(feats) ? 'fill' : 'conflict';
+            const field = {
+              ...base(w), column: 'feats', from: feats, to: merge.merged, status, source: sources.join(' + '),
+              note: notes.join('; '), added: merge.added
+            };
+            // only the pairs this proposal adds are validated; values already in the cell are the annotator's
+            fields.push(status === 'same' ? field : flag(field, 'feats', merge.added.flatMap((k) => proposed.get(k).split(',').map((v) => `${k}=${v}`))));
+          }
+        }
+      }
+    }
+
+    if (cols.includes('misc')) {
+      for (const g of this.suggestGlosses(importId, sentIndex, { srcLang, tgtLang })) {
+        const status = { new: 'fill', same: 'same', consistent: 'same', conflict: 'conflict', none: 'none' }[g.status];
+        fields.push({
+          sentIndex: g.sentIndex, lineIdx: g.lineIdx, tokenId: g.tokenId, form: g.form, column: 'misc', key: g.key,
+          from: g.existing, to: g.gloss, status, source: 'dictionary',
+          note: g.status === 'consistent' ? 'existing segmented gloss already contains the dictionary gloss' : '',
+          candidates: g.candidates
+        });
+      }
+    }
+    return fields.sort((a, b) => a.sentIndex - b.sentIndex || a.lineIdx - b.lineIdx);
+  }
+
+  /**
+   * Writes accepted proposals. A non-empty value is only replaced when the field has `overwrite: true`
+   * (the caller sets that after the user accepted it); empty cells are filled as they are. A proposal
+   * whose old value no longer matches the working copy is skipped as stale. Everything else is untouched.
+   * @returns {Promise<{ written: number, replaced: number, skipped: number, stale: number, unconfirmed: number, byColumn: Object<string, number> }>}
+   */
+  async applyEnhancements(importId, fields) {
+    const it = this._item(importId);
+    const result = { written: 0, replaced: 0, skipped: 0, stale: 0, unconfirmed: 0, byColumn: {} };
+    for (const f of fields) {
+      if (!ENHANCE_COLUMNS.includes(f.column) || !f.to || f.status === 'none' || f.status === 'same') { result.skipped++; continue; }
+      const sentence = it.parsed.sentences[f.sentIndex];
+      const col = CONLLU_COLUMNS.indexOf(f.column);
+      const working = this.workingCols(importId, f.sentIndex, f.lineIdx);
+      let current;
+      if (f.column === 'misc') {
+        const seg = parseMisc(working[9]).find((s) => s.key === f.key);
+        current = seg ? (seg.value || '') : null;
+      } else {
+        current = working[col];
+      }
+      if (current !== f.from) { result.stale++; continue; }
+      if (f.needsConfirm && !f.confirmNew) { result.unconfirmed++; result.skipped++; continue; }
+      const empty = f.column === 'misc' ? current === null : isEmptyCell(current);
+      if (!empty && !f.overwrite) { result.skipped++; continue; }
+      try {
+        if (f.column === 'misc') {
+          editMiscKey(it.overrides, sentence, f.lineIdx, f.key, formatGlossValue(f.to, detectGlossConvention(it.parsed).spaceChar));
+        } else {
+          editCell(it.overrides, sentence, f.lineIdx, f.column, f.to);
+        }
+      } catch (err) {
+        result.skipped++;
+        continue;
+      }
+      if (empty) result.written++; else result.replaced++;
+      result.byColumn[f.column] = (result.byColumn[f.column] || 0) + 1;
+    }
+    await this._persist(importId);
+    return result;
   }
 }
 
