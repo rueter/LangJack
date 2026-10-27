@@ -80,11 +80,14 @@ console.log('Gloss for "aiku" (por):', aikuGlossesPor);
 assert(aikuGlossesPor.length > 0, 'Should find gloss for "aiku" in Portuguese');
 assert(aikuGlossesPor.some(g => g.gloss === 'casa' && g.lang === 'por'), 'Expected "casa" for "aiku"');
 
-// Lookup "ãamyna" -> árvore
-const treeGlossesPor = dictionaryService.lookupGlosses('ãamyna', 'apu', 'por');
-console.log('Gloss for "ãamyna" (por):', treeGlossesPor);
-assert(treeGlossesPor.length > 0, 'Should find gloss for "ãamyna" in Portuguese');
-assert(treeGlossesPor.some(g => g.gloss === 'árvore' && g.lang === 'por'), 'Expected "árvore" for "ãamyna"');
+// The packaged apu-por TSV is a small sample (see models/dict-apu-por.tsv), so these
+// lookups use entries that ship in it.
+
+// Lookup "anãpa" -> cachorro
+const dogGlossesPor = dictionaryService.lookupGlosses('anãpa', 'apu', 'por');
+console.log('Gloss for "anãpa" (por):', dogGlossesPor);
+assert(dogGlossesPor.length > 0, 'Should find gloss for "anãpa" in Portuguese');
+assert(dogGlossesPor.some(g => g.gloss === 'cachorro' && g.lang === 'por'), 'Expected "cachorro" for "anãpa"');
 
 // Lookup "kyky" -> homem
 const kykyGlossesPor = dictionaryService.lookupGlosses('kyky', 'apu', 'por');
@@ -92,25 +95,23 @@ console.log('Gloss for "kyky" (por):', kykyGlossesPor);
 assert(kykyGlossesPor.length > 0, 'Should find gloss for "kyky" in Portuguese');
 assert(kykyGlossesPor.some(g => g.gloss === 'homem' && g.lang === 'por'), 'Expected "homem" for "kyky"');
 
-// Lookup "ãata" -> canoa tradicional, canoa
-const aataGlossesPor = dictionaryService.lookupGlosses('ãata', 'apu', 'por');
-console.log('Gloss for "ãata" (por):', aataGlossesPor.map(g => g.gloss));
-assert(aataGlossesPor.length > 0, 'Should find gloss for "ãata" in Portuguese');
-assert(aataGlossesPor.some(g => g.gloss === 'canoa tradicional'), 'Expected word set "canoa tradicional"');
-assert(aataGlossesPor.some(g => g.gloss === 'canoa'), 'Expected individual word "canoa"');
+// Lookup "amãtxuary" -> macaco de taboca (a multi-word gloss stays one word set)
+const monkeyGlossesPor = dictionaryService.lookupGlosses('amãtxuary', 'apu', 'por');
+console.log('Gloss for "amãtxuary" (por):', monkeyGlossesPor.map(g => g.gloss));
+assert(monkeyGlossesPor.length > 0, 'Should find gloss for "amãtxuary" in Portuguese');
+assert(monkeyGlossesPor.some(g => g.gloss === 'macaco de taboca'), 'Expected word set "macaco de taboca"');
 
-// Lookup "ãapytsa" -> cipó, corda (separate individual words)
-const aapytsaGlosses = dictionaryService.lookupGlosses('ãapytsa', 'apu', 'por');
-console.log('Gloss for "ãapytsa" (por):', aapytsaGlosses.map(g => g.gloss));
-assert(aapytsaGlosses.some(g => g.gloss === 'cipó'), 'Expected separate individual word "cipó"');
-assert(aapytsaGlosses.some(g => g.gloss === 'corda'), 'Expected separate individual word "corda"');
+// Lookup "anhika" -> conduzir, levar (separate rows stay separate individual words)
+const anhikaGlosses = dictionaryService.lookupGlosses('anhika', 'apu', 'por');
+console.log('Gloss for "anhika" (por):', anhikaGlosses.map(g => g.gloss));
+assert(anhikaGlosses.some(g => g.gloss === 'conduzir'), 'Expected separate individual word "conduzir"');
+assert(anhikaGlosses.some(g => g.gloss === 'levar'), 'Expected separate individual word "levar"');
 
-// Lookup "ãatsupa" -> caderno, folha de papel, folha de planta (separate word and word sets)
-const aatsupaGlosses = dictionaryService.lookupGlosses('ãatsupa', 'apu', 'por');
-console.log('Gloss for "ãatsupa" (por):', aatsupaGlosses.map(g => g.gloss));
-assert(aatsupaGlosses.some(g => g.gloss === 'caderno'), 'Expected individual word "caderno"');
-assert(aatsupaGlosses.some(g => g.gloss === 'folha de papel'), 'Expected word set "folha de papel"');
-assert(aatsupaGlosses.some(g => g.gloss === 'folha de planta'), 'Expected word set "folha de planta"');
+// Lookup "kãkiti" -> gente, pessoa, Apurinã
+const kakitiGlosses = dictionaryService.lookupGlosses('kãkiti', 'apu', 'por');
+console.log('Gloss for "kãkiti" (por):', kakitiGlosses.map(g => g.gloss));
+assert(kakitiGlosses.some(g => g.gloss === 'gente'), 'Expected individual word "gente"');
+assert(kakitiGlosses.some(g => g.gloss === 'pessoa'), 'Expected individual word "pessoa"');
 
 // Test splitGlossItem utility directly
 import { splitGlossItem } from '../js/services/dictionary-service.js';

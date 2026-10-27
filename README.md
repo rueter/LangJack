@@ -4,6 +4,14 @@
 
 ---
 
+## Try it online
+
+LangJack also runs in any modern browser, with nothing to install: **<https://multilingualfacilitation.com/LangJack/>**
+
+The large morphological models are not stored in this repository. On first use LangJack downloads the model for the selected language from [UralicNLP](https://github.com/Rootroo-ltd/uralicnlpmodels) and keeps it in your browser (IndexedDB), so later visits, including offline ones, start from the saved copy. Two small starter models in `models/` serve as a fallback.
+
+---
+
 ## Features
 
 1. **Text Input & Tokenization**
@@ -126,13 +134,27 @@ Generated packages will be in the `dist/` directory:
    ```
 3. Enable **Developer mode** using the toggle switch in the top-right corner.
 4. Click the **Load unpacked** button in the top-left corner.
-5. Select this project folder:
-   ```
-   /Users/jackrueter/Dropbox/infra_dev/LangJack
+5. Select the folder of this project (your clone of this repository):
+   ```bash
+   git clone https://github.com/rueter/LangJack.git
    ```
 6. The extension **LangJack** is now installed!
    - Click the extension icon in Chrome's toolbar to open the popup.
-   - Click **🚀 Open Full Workbench** (or open [index.html](file:///Users/jackrueter/Dropbox/infra_dev/LangJack/index.html) directly in Chrome) to start annotating and glossing!
+   - Click **🚀 Open Full Workbench** (or open `index.html` from the project folder in Chrome) to start annotating and glossing!
+
+---
+
+## Dictionaries in TSV format
+
+Besides the UralicNLP dictionary transducers, LangJack reads plain tab-separated dictionaries. `models/dict-apu-por.tsv` is a **small sample** (Apurinã with Portuguese and English glosses) that shows the format; it is not a full lexicon. `models/dict-koi.tsv` is derived from UralicNLP / Giellatekno data.
+
+```
+lemma	gloss	target_lang	pos	source_lang	notes
+aiku	casa	por	N	apu	Apurinã noun
+aiku	house	eng	N	apu	Apurinã noun
+```
+
+Lines starting with `#` are comments. Your own TSV, CSV, JSON or Lexc dictionaries can be imported under **Models & Dictionaries**, and are kept in your browser.
 
 ---
 
@@ -146,7 +168,10 @@ node test/test_arbitrary_text.js
 node test/test_language_selection.js
 node test/test_renew_reading_upos.js
 node test/test_uralicnlp_renew_and_derived_upos.js
+node test/test_verdd_api_service.js
 ```
+
+Some suites load analyzers from `models/`. Those files are not in the repository (see *Try it online*): download them first through the app, or copy them into `models/`.
 
 Verifies:
 - Tag mapping from HFST to Universal Dependencies (`UPOS` and `FEATS`).
@@ -158,6 +183,12 @@ Verifies:
 - Language configuration: exclusion of `chm`, inclusion of Komi-Permyak (`koi`), Meadow Mari (`mhr`), and Hill Mari (`mrj`).
 - Multi-language dictionary glossing and ISO language code filtering.
 - CoNLL-U, 5-line Linguistic Leipzig, and Ve'rdd multi-format exports.
+
+---
+
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE). Models and dictionaries downloaded from UralicNLP / Giellatekno keep their own licenses.
 
 ---
 

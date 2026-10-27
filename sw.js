@@ -3,7 +3,8 @@
  * Provides offline caching for the linguistic workbench, models, and dictionaries.
  */
 
-const CACHE_NAME = 'langjack-pwa-v1.0.0';
+// Bump the suffix on every deploy so returning visitors receive the new files.
+const CACHE_NAME = 'langjack-pwa-v1.0.0-r2';
 
 const PRECACHE_ASSETS = [
   './',
@@ -21,7 +22,7 @@ const PRECACHE_ASSETS = [
   'js/services/dictionary-service.js',
   'js/services/storage-service.js',
   'js/services/treebank-service.js',
-  'js/services/conllu-service.js',
+  'js/services/conllu-exporter.js',
   'js/lib/hfst/core.js',
   'js/lib/hfst/transducer.js'
 ];

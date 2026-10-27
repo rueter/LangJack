@@ -1,3 +1,4 @@
+# Small sample of Apurinã (apu) entries, Portuguese and English glosses, to show the TSV format. Not the full lexicon.
 lemma	gloss	target_lang	pos	source_lang	notes
 aa	ah	por	Interj	apu	Apurinã interjection
 aa	oh	eng	Interj	apu	Apurinã	interjection
