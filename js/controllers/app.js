@@ -20,6 +20,8 @@ import { dependencyService } from '../services/dependency-service.js';
 import { DependencyVisualizer } from '../services/dependency-visualizer.js';
 import { paradigmService } from '../services/paradigm-service.js';
 import { VerddPanel } from './verdd-panel.js';
+import { ConlluImportPanel } from './conllu-import-panel.js';
+import { conlluImportService } from '../services/conllu-import-service.js';
 
 export const LANGUAGE_INFO = {
   vro: { name: 'Võro' },
@@ -169,6 +171,31 @@ export class WorkbenchApp {
     };
   }
 
+  initConlluImport() {
+    const root = document.getElementById('conlluImportRoot');
+    const modal = document.getElementById('conlluImportModal');
+    if (!root || !modal) return;
+    try {
+      this.conlluImportPanel = new ConlluImportPanel({
+        root,
+        service: conlluImportService,
+        getSrcLang: () => this.srcLang,
+        showToast: (message, type) => this.showToast(message, type),
+        confirmAction: (message) => this.confirmAction(message)
+      });
+      this.conlluImportPanel.init().catch((err) => console.warn('CoNLL-U import panel failed to start:', err));
+      const close = () => modal.classList.remove('open');
+      document.getElementById('openConlluImportBtn')?.addEventListener('click', () => {
+        this.conlluImportPanel.refreshDefaults();
+        modal.classList.add('open');
+      });
+      document.getElementById('closeConlluImportBtn')?.addEventListener('click', close);
+      modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    } catch (err) {
+      console.warn('CoNLL-U import panel failed to start:', err);
+    }
+  }
+
   initVerddPanel() {
     const root = document.getElementById('verddWorkbench');
     if (!root) return;
@@ -201,6 +228,7 @@ export class WorkbenchApp {
     this.bindDOM();
     this.bindEvents();
     this.initVerddPanel();
+    this.initConlluImport();
 
     try {
       this.showToast('Initializing HFST engine and dictionaries...', 'info');

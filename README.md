@@ -54,6 +54,10 @@ The large morphological models are not stored in this repository. On first use L
    - **Universal Dependencies (CoNLL-U)**:
      - 10-column tab-separated UD format (`ID`, `FORM`, `LEMMA`, `UPOS`, `XPOS`, `FEATS`, `HEAD`, `DEPREL`, `DEPS`, `MISC`).
      - Includes `# sent_id`, `# text`, and translations (`# text_eng = ...`, `# text_fin = ...`).
+     - **Import / Enhance CoNLL-U…**: load an existing treebank (for example a UD `.conllu` file), add glosses from the dictionary, and export it again without losing anything.
+       - The file is stored in your browser as an unchanged original (file name, import time, SHA-256); your edits are kept separately as small per-sentence changes. Sentences you did not edit are exported byte-for-byte as they were, including comments, string `sent_id`s, multiword ranges and every MISC key.
+       - **Suggest glosses** (per sentence or for the whole file) looks up each lemma in the dictionary and writes into MISC using the file's own convention (`gloss[pt]=` or `gloss_pt=`; the more frequent one wins). Existing glosses are never overwritten without confirmation; morpheme-segmented glosses such as `ver-3SG.M.O` that already contain the dictionary gloss are left alone.
+       - Review the changes against the original per sentence, revert a sentence or everything, and **Download working copy** under a new default name (`<name>.enhanced.conllu`). Malformed rows are reported with their line numbers and kept as they are.
    - **Linguistic Interlinear Format (MS Word / LibreOffice)**:
      - Separate lines:
        - **a.** Original text
@@ -169,6 +173,7 @@ node test/test_language_selection.js
 node test/test_renew_reading_upos.js
 node test/test_uralicnlp_renew_and_derived_upos.js
 node test/test_verdd_api_service.js
+node test/test_conllu_import.js
 ```
 
 Some suites load analyzers from `models/`. Those files are not in the repository (see *Try it online*): download them first through the app, or copy them into `models/`.

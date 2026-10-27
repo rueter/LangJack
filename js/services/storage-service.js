@@ -5,7 +5,7 @@
  */
 
 const DB_NAME = 'hfst_glosser_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 class StorageService {
   constructor() {
@@ -14,7 +14,8 @@ class StorageService {
       models: new Map(),
       dictionaries: new Map(),
       settings: new Map(),
-      sessions: new Map()
+      sessions: new Map(),
+      conlluImports: new Map()
     };
     this._hasIndexedDB = typeof indexedDB !== 'undefined';
     this._initPromise = this._hasIndexedDB ? this._initDB() : Promise.resolve(null);
@@ -45,6 +46,11 @@ class StorageService {
 
           if (!db.objectStoreNames.contains('sessions')) {
             db.createObjectStore('sessions', { keyPath: 'id' });
+          }
+
+          // Imported CoNLL-U files: immutable originals ('orig:<id>') and working copies ('work:<id>')
+          if (!db.objectStoreNames.contains('conllu_imports')) {
+            db.createObjectStore('conllu_imports', { keyPath: 'id' });
           }
         };
 
@@ -310,6 +316,84 @@ class StorageService {
       const req = store.clear();
       req.onsuccess = () => resolve(true);
       req.onerror = () => resolve(false);
+    });
+  }
+
+  // Imported CoNLL-U treebanks. A separate store, so clearing or re-saving accumulated
+  // treebanks ('sessions') can never touch an imported original.
+
+  /**
+   * Stores an imported file's original text. Add-only: an existing original is never replaced.
+   * @returns {Promise<{ record: Object, existed: boolean }>}
+   */
+  async addConlluOriginal(record) {
+    const stored = { ...record, kind: 'original', id: `orig:${record.importId}` };
+    const store = await this._getStore('conllu_imports', 'readwrite');
+    if (!store) {
+      const existing = this.memoryStore.conlluImports.get(stored.id);
+      if (existing) return { record: existing, existed: true };
+      this.memoryStore.conlluImports.set(stored.id, stored);
+      return { record: stored, existed: false };
+    }
+    return new Promise((resolve, reject) => {
+      const req = store.add(stored);
+      req.onsuccess = () => resolve({ record: stored, existed: false });
+      req.onerror = (e) => {
+        e.preventDefault(); // ConstraintError: already imported, keep the stored original as it is
+        const get = store.transaction.objectStore('conllu_imports').get(stored.id);
+        get.onsuccess = () => resolve({ record: get.result, existed: true });
+        get.onerror = () => reject(req.error);
+      };
+    });
+  }
+
+  async getConlluRecord(id) {
+    const store = await this._getStore('conllu_imports', 'readonly');
+    if (!store) return this.memoryStore.conlluImports.get(id) || null;
+    return new Promise((resolve) => {
+      const req = store.get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  }
+
+  async getAllConlluRecords() {
+    const store = await this._getStore('conllu_imports', 'readonly');
+    if (!store) return Array.from(this.memoryStore.conlluImports.values());
+    return new Promise((resolve) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+  }
+
+  /** Saves (replaces) the working copy of an import: overrides and export file name. */
+  async saveConlluWorking(record) {
+    const stored = { ...record, kind: 'working', id: `work:${record.importId}`, updatedAt: Date.now() };
+    const store = await this._getStore('conllu_imports', 'readwrite');
+    if (!store) {
+      this.memoryStore.conlluImports.set(stored.id, stored);
+      return stored;
+    }
+    return new Promise((resolve, reject) => {
+      const req = store.put(stored);
+      req.onsuccess = () => resolve(stored);
+      req.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  /** Removes an import entirely (original and working copy). Only called on an explicit user request. */
+  async deleteConlluImport(importId) {
+    const ids = [`orig:${importId}`, `work:${importId}`];
+    const store = await this._getStore('conllu_imports', 'readwrite');
+    if (!store) {
+      ids.forEach((id) => this.memoryStore.conlluImports.delete(id));
+      return true;
+    }
+    return new Promise((resolve) => {
+      ids.forEach((id) => store.delete(id));
+      store.transaction.oncomplete = () => resolve(true);
+      store.transaction.onerror = () => resolve(false);
     });
   }
 }

@@ -299,6 +299,9 @@
             <button id="removeAccumulativeFileBtn" class="btn btn-secondary btn-sm" style="color: #b91c1c; border-color: #fca5a5;" title="Manually remove the accumulative file (clears all saved treebanks)">
               🗑️ Remove Accumulative File
             </button>
+            <button id="openConlluImportBtn" class="btn btn-secondary btn-sm" title="Load an existing CoNLL-U treebank, add glosses from the dictionary and export it again without losing anything">
+              📥 Import / Enhance CoNLL-U…
+            </button>
             <button id="toggleTreebankListBtn" class="btn btn-secondary btn-sm" title="View/manage list of accumulated treebank sentences">
               📋 View List (<span id="treebankListCount">0</span>)
             </button>
@@ -660,6 +663,22 @@
           </button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal for importing an existing CoNLL-U treebank, enhancing it and exporting it as a new file (js/controllers/conllu-import-panel.js) -->
+  <div id="conlluImportModal" class="modal-overlay">
+    <div class="modal-dialog modal-annotate-treebank">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">📥 Import &amp; Enhance CoNLL-U Treebank</div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+            The original is kept unchanged; edits are stored separately and exported as a new file.
+          </div>
+        </div>
+        <button id="closeConlluImportBtn" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body" id="conlluImportRoot"></div>
     </div>
   </div>
 
