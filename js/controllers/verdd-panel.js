@@ -817,7 +817,7 @@ export class VerddPanel {
     return `
       <details class="vw-split">
         <summary>Split this entry</summary>
-        <div class="vw-hint">Use this when one entry mixes two meanings, homonyms or parts of speech. Tick what belongs to the <strong>new</strong> entry; the rest stays here. Forms, stems and metadata stay on this entry.</div>
+        <div class="vw-hint">Use this when one entry mixes two meanings, homonyms or parts of speech. Type the new entry's headword and tick what belongs to it; the rest stays here. Afterwards edit this entry's own headword if needed. Forms, stems and metadata stay on this entry.</div>
         <div class="vw-grid">
           <label>New headword <input data-split="lexeme" placeholder="${esc(lexeme.lexeme)}" lang="und"></label>
           <label><span>New part of speech</span> ${this.posSelect(lexeme.pos, 'data-split="pos"')}</label>
@@ -845,8 +845,9 @@ export class VerddPanel {
   async previewSplit() {
     const detail = this.browse.detail;
     const request = this.splitRequest();
-    if (!request.relations.length && !request.examples.length) {
-      return this.showToast('Tick at least one translation or example to move to the new entry.', 'error');
+    const newHeadword = request.lexeme && request.lexeme !== detail.lexeme.lexeme;
+    if (!request.relations.length && !request.examples.length && !newHeadword) {
+      return this.showToast('Type a new headword, or tick at least one translation or example to move to the new entry.', 'error');
     }
     await this.guard(async () => {
       const report = await this.api.splitLexeme(detail.lexeme.id, { ...request, dryRun: true });
