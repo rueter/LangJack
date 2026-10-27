@@ -248,6 +248,15 @@ assert.deepStrictEqual(describeMerge({
   'The kept entry has no part of speech yet, so it becomes N.',
   'The kept entry becomes unapproved so it is reviewed again.'
 ]);
+assert.deepStrictEqual(describeMerge({
+  moved: { relations: 1 }, deduplicated: {}, dropped: {}, fields_copied: ['notes'], notes: [], keeper_unapproved: true,
+  pos_dropped: 'N', into: { pos: 'V' }
+}), [
+  'Moves 1 relation to the kept entry.',
+  'The part of speech N of the absorbed entry is dropped; the kept entry stays V.',
+  "Fills the kept entry's empty notes.",
+  'The kept entry becomes unapproved so it is reviewed again.'
+]);
 console.log('✓ merge helpers');
 
 console.log('=== 10. Editing, merging and splitting any entry ===');
@@ -263,10 +272,14 @@ for (const [input, expected] of Object.entries(tidy)) assert.strictEqual(tidyHea
 assert.strictEqual(tidyHeadword(null), '');
 
 const entry = (id, lexeme, pos, extra = {}) => ({ id, lexeme, pos, language: 'kpv', homoId: 0, checked: false, ...extra });
-assert.deepStrictEqual(mergeVerdict(entry(1, '( ) пӧла', 'UND'), entry(2, 'пӧла', 'N')), { ok: true, differentHeadword: true, takesPos: false });
-assert.deepStrictEqual(mergeVerdict(entry(1, 'пӧла', 'N'), entry(2, 'пӧла', 'N', { homoId: 1 })), { ok: true, differentHeadword: false, takesPos: false });
-assert.deepStrictEqual(mergeVerdict(entry(1, 'пӧла', 'N'), entry(2, 'пӧла', 'ZERO')), { ok: true, differentHeadword: false, takesPos: true });
+assert.deepStrictEqual(mergeVerdict(entry(1, '( ) пӧла', 'UND'), entry(2, 'пӧла', 'N')), { ok: true, differentHeadword: true, differentPos: false, takesPos: false });
+assert.deepStrictEqual(mergeVerdict(entry(1, 'пӧла', 'N'), entry(2, 'пӧла', 'N', { homoId: 1 })), { ok: true, differentHeadword: false, differentPos: false, takesPos: false });
+assert.deepStrictEqual(mergeVerdict(entry(1, 'пӧла', 'N'), entry(2, 'пӧла', 'ZERO')), { ok: true, differentHeadword: false, differentPos: false, takesPos: true });
 assert.match(mergeVerdict(entry(1, 'пӧла', 'N'), entry(2, 'пӧла', 'V')).reason, /different parts of speech \(N and V\)/);
+assert.match(mergeVerdict(entry(1, 'пӧла', 'N'), entry(2, 'пӧла', 'V')).reason, /set it to match the other and press Save/);
+assert.deepStrictEqual(mergeVerdict(entry(1, 'саевемс', 'N'), entry(2, 'саевемс', 'V'), { allowDifferentPos: true }),
+  { ok: true, differentHeadword: false, differentPos: true, takesPos: false }, 'the user chose the other entry\'s POS, so the wrong one may be dropped');
+assert.ok(!mergeVerdict(entry(1, 'a', 'N'), entry(2, 'a', 'N', { language: 'fin' }), { allowDifferentPos: true }).ok, 'the option waives only the POS rule');
 assert.match(mergeVerdict(entry(1, 'a', 'N'), entry(1, 'a', 'N')).reason, /itself/);
 assert.match(mergeVerdict(entry(1, 'a', 'N'), entry(2, 'a', 'N', { language: 'fin' })).reason, /same language/);
 
@@ -301,8 +314,8 @@ assert.match(mergeVerdict(entry(1, 'a', 'N'), entry(2, 'a', 'N', { language: 'fi
     'POST /verdd/api/v1/lexemes/5/split/': (call) => ({ status: call.body.dry_run ? 200 : 201, body: { moved: { relations: 1 }, new: { id: call.body.dry_run ? null : 99 } } }),
     'GET /verdd/api/v1/examples/': { body: { count: 1, results: [{ id: 4, text: 'Пӧла.' }] } }
   });
-  await api.mergeLexeme(5, 6, { dryRun: true, allowDifferentHeadword: true });
-  assert.deepStrictEqual(calls[0].body, { into: 6, dry_run: true, allow_different_headword: true });
+  await api.mergeLexeme(5, 6, { dryRun: true, allowDifferentHeadword: true, allowDifferentPos: true });
+  assert.deepStrictEqual(calls[0].body, { into: 6, dry_run: true, allow_different_headword: true, allow_different_pos: true });
   assert.deepStrictEqual((await api.lexemeExamples(5)).map(e => e.id), [4]);
   assert.deepStrictEqual(calls[1].query, { lexeme: '5', limit: '200' });
 
