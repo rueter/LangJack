@@ -210,6 +210,20 @@ if (fs.existsSync(file)) {
   assert(!meta.sources.some((x) => /^UD_(Estonian-EDT|Hungarian)/.test(x.treebank)), 'Non-commercial treebanks are left out');
   assert(!/UD_Estonian-EDT|UD_Hungarian/.test(raw), 'No trace of them in the inventory');
   assert(!/not-to-release/.test(raw), 'Nothing from not-to-release folders');
+  // only well-formed UD-style names may be written out: no free text from MISC (glosses without "Key="), no odd labels
+  const all = JSON.parse(raw).languages;
+  for (const [code, l] of Object.entries(all)) {
+    for (const key of Object.keys(l.misc)) assert(/^[A-Za-z][A-Za-z0-9_]*(\[[A-Za-z0-9_-]+\])?$/.test(key), `${code}: MISC key "${key}" is not a plain key name`);
+    for (const key of Object.keys(l.feats)) {
+      assert(/^[A-Z][A-Za-z0-9]*(\[[a-z0-9]+\])?$/.test(key), `${code}: feature name "${key}"`);
+      for (const value of Object.keys(l.feats[key])) assert(/^[A-Z0-9][A-Za-z0-9]*$/.test(value), `${code}: value "${value}" of ${key}`);
+    }
+    for (const u of Object.keys(l.upos)) assert(/^[A-Z]+$/.test(u), `${code}: UPOS "${u}"`);
+    for (const r of Object.keys(l.deprel)) assert(/^[a-z]+(:[a-z]+)?$/.test(r), `${code}: DEPREL "${r}"`);
+    assert(l.rejected && typeof l.rejected === 'object', `${code}: rejected counts present`);
+  }
+  assert(Object.keys(all.myu.misc).every((k) => !/[-.]/.test(k)), 'Munduruku glosses are not recorded as MISC keys');
+  assert(all.myu.rejected.misc > 0 && all.ceb.rejected.misc > 0, 'Free-text MISC segments are only counted, never named');
   const tagabawa = meta.sources.find((x) => x.treebank === 'UD_Tagabawa-GJA');
   assert.strictEqual(tagabawa.readFromBranch, 'origin/dev', 'Tagabawa data comes from the dev branch (read-only)');
   assert.strictEqual(tagabawa.license, 'CC BY-SA 4.0');
