@@ -12,6 +12,7 @@
  * Only the top-level *.conllu files of each treebank folder are read (never subfolders such as
  * not-to-release). The output holds names and counts only: no sentence, word, lemma or gloss is copied.
  * MISC is recorded by key name only (never the value), so non-standard keys such as CGdeprel can be flagged.
+ * Only well-formed UD-style names are written out; anything else is just counted under `rejected`.
  * The inventory is derived from UD treebanks; each treebank keeps its own license (listed in the output).
  */
 
@@ -47,6 +48,14 @@ const excludeArg = args['exclude-licenses'] || '-NC-'; // default: skip non-comm
 const excludeLicense = excludeArg === 'none' ? null : new RegExp(excludeArg, 'i');
 
 const bump = (obj, key, by = 1) => { obj[key] = (obj[key] || 0) + by; };
+
+// Only well-formed UD names are recorded. Anything else (free text in MISC, glosses without "Key=", odd labels) could be
+// language data, so it is counted in `rejected` and never written out by name.
+const FEAT_KEY = /^[A-Z][A-Za-z0-9]*(\[[a-z0-9]+\])?$/;
+const FEAT_VALUE = /^[A-Z0-9][A-Za-z0-9]*$/;
+const UPOS_RE = /^[A-Z]+$/;
+const DEPREL_RE = /^[a-z]+(:[a-z]+)?$/;
+const MISC_KEY = /^[A-Za-z][A-Za-z0-9_]*(\[[A-Za-z0-9_-]+\])?$/;
 const sortedObject = (obj) => Object.fromEntries(Object.entries(obj).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 
 const normalizeLicense = (l) => (l || '').toUpperCase().replace(/[^A-Z0-9.]+/g, ' ').trim();
@@ -106,16 +115,25 @@ async function scanFile(file, lang, ref = null, dir = null) {
     const cols = line.split('\t');
     if (cols.length !== 10 || !/^\d+$/.test(cols[0])) continue; // words only: no ranges, empty nodes or junk
     lang.tokens++;
-    if (cols[3] !== '_') bump(lang.upos, cols[3]);
-    if (cols[7] !== '_') bump(lang.deprel, cols[7]);
-    if (cols[9] !== '_') for (const seg of cols[9].split('|')) if (seg) bump(lang.misc, seg.split('=')[0]);
+    if (cols[3] !== '_') { if (UPOS_RE.test(cols[3])) bump(lang.upos, cols[3]); else bump(lang.rejected, 'upos'); }
+    if (cols[7] !== '_') { if (DEPREL_RE.test(cols[7])) bump(lang.deprel, cols[7]); else bump(lang.rejected, 'deprel'); }
+    if (cols[9] !== '_') {
+      for (const seg of cols[9].split('|')) {
+        if (!seg) continue;
+        const eq = seg.indexOf('=');
+        if (eq > 0 && MISC_KEY.test(seg.slice(0, eq))) bump(lang.misc, seg.slice(0, eq)); // key name only, never the value
+        else bump(lang.rejected, 'misc');
+      }
+    }
     if (cols[5] === '_') continue;
     for (const pair of cols[5].split('|')) {
       const eq = pair.indexOf('=');
-      if (eq < 1) continue;
+      if (eq < 1) { bump(lang.rejected, 'feats'); continue; }
       const key = pair.slice(0, eq);
+      const values = pair.slice(eq + 1).split(',').filter(Boolean);
+      if (!FEAT_KEY.test(key) || !values.length || !values.every((v) => FEAT_VALUE.test(v))) { bump(lang.rejected, 'feats'); continue; }
       lang.feats[key] = lang.feats[key] || {};
-      for (const value of pair.slice(eq + 1).split(',')) if (value) bump(lang.feats[key], value);
+      for (const value of values) bump(lang.feats[key], value);
     }
   }
 }
@@ -146,7 +164,7 @@ for (const name of treebanks) {
   if (excludeLicense && license && excludeLicense.test(license)) { console.warn(`skipped ${name}: license ${license}`); continue; }
   const prefix = files[0].split('_')[0];
   const code = PREFIX_TO_CODE[prefix] || prefix;
-  const lang = languages[code] || (languages[code] = { treebanks: [], tokens: 0, feats: {}, upos: {}, deprel: {}, misc: {} });
+  const lang = languages[code] || (languages[code] = { treebanks: [], tokens: 0, feats: {}, upos: {}, deprel: {}, misc: {}, rejected: {} });
   for (const f of files) await scanFile(ref ? f : path.join(dir, f), lang, ref, dir);
   lang.treebanks.push(name);
   const entry = { treebank: name, language: code, files: files.length, license, licenseSource };
@@ -169,7 +187,8 @@ const result = {
     feats: Object.fromEntries(Object.entries(sortedObject(l.feats)).map(([k, v]) => [k, sortedObject(v)])),
     upos: sortedObject(l.upos),
     deprel: sortedObject(l.deprel),
-    misc: sortedObject(l.misc)
+    misc: sortedObject(l.misc),
+    rejected: sortedObject(l.rejected)
   }]))
 };
 
