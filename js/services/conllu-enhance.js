@@ -173,17 +173,33 @@ export function describeGlossMapping() {
 // Analyzer readings
 // ---------------------------------------------------------------------------------------
 
+const DERIVED = /\+Der(\/|\+|$)/;
+
 /**
- * Picks what the analyzer says about a token. Readings that agree with the row's existing lemma
- * (then UPOS) are preferred; when several readings remain, only the features they share are used.
- * @returns {null|{ lemma: string, upos: string, xpos: string, feats: Map<string,string>, readings: number }}
+ * What the analyzer says about a token, looked up by its FORM. The word form is primary: the file's LEMMA is a
+ * hypothesis, never a filter. Every reading stays a candidate (`candidates`, each marked with whether its lemma
+ * equals the file's and whether it is part of the default proposal). The default proposal uses a visible tie-breaker
+ * to pick its pool (`defaultReason`): readings with the file's lemma, else plain readings over derived ones (+Der...),
+ * then the file's UPOS. When that pool has several readings the default uses only the features they share and the
+ * token is `ambiguous`. The user can pick any reading (`choice` = its raw analysis string); it then supplies LEMMA,
+ * UPOS, XPOS and FEATS together.
+ * @param {Array<Object>} readings  analyzer readings
+ * @param {{ lemma: string, upos: string }} row  the file's current values (hypotheses)
+ * @param {string|null} [choice]  raw analysis of the reading the user picked; null = default rule
+ * @returns {null|{ lemma: string, upos: string, xpos: string, feats: Map<string,string>, readings: number,
+ *   ambiguous: boolean, alternatives: boolean, choice: string|null, choiceStale: boolean, shared: Map<string,string>,
+ *   defaultReason: string, candidates: Array<Object> }}
  */
-export function summarizeReadings(readings, row) {
+export function summarizeReadings(readings, row, choice = null) {
   const usable = (readings || []).filter((r) => r && !r.isGuessed && r.lemma);
   if (!usable.length) return null;
   const sameLemma = usable.filter((r) => stripGuessTags(r.lemma) === row.lemma);
-  const sameUpos = (sameLemma.length ? sameLemma : usable).filter((r) => r.upos === row.upos);
-  const chosen = sameUpos.length ? sameUpos : (sameLemma.length ? sameLemma : usable);
+  // With no lemma to go by, a plain reading beats a derived one (+Der...), which would otherwise
+  // drag the features they do not share out of the proposal.
+  const plain = usable.filter((r) => !DERIVED.test(r.raw || ''));
+  const pool = sameLemma.length ? sameLemma : (plain.length ? plain : usable);
+  const sameUpos = pool.filter((r) => r.upos === row.upos);
+  const chosen = sameUpos.length ? sameUpos : pool;
   const first = chosen[0];
   let shared = null;
   for (const r of chosen) {
@@ -191,9 +207,29 @@ export function summarizeReadings(readings, row) {
     if (shared === null) shared = own;
     else for (const [k, v] of [...shared]) if (own.get(k) !== v) shared.delete(k);
   }
+  const reasons = [];
+  if (sameLemma.length) reasons.push("readings with the file's lemma");
+  else if (plain.length && plain.length < usable.length) reasons.push('plain readings over derived ones');
+  if (sameUpos.length && sameUpos.length < pool.length) reasons.push("the file's UPOS");
+  const describe = (r) => ({
+    raw: r.raw || '', lemma: stripGuessTags(r.lemma), upos: r.upos, xpos: r.pos || '',
+    feats: featsToString(new Map(Object.entries(r.featsMap || {}))), derived: DERIVED.test(r.raw || ''),
+    matchesFileLemma: stripGuessTags(r.lemma) === row.lemma, inDefault: chosen.includes(r)
+  });
+  const common = {
+    ambiguous: chosen.length > 1, alternatives: usable.length > 1, shared: shared || new Map(),
+    defaultReason: reasons.join(' and '), candidates: usable.map(describe)
+  };
+  const picked = choice ? usable.find((r) => r.raw === choice) : null;
+  if (picked) {
+    return {
+      lemma: stripGuessTags(picked.lemma), upos: picked.upos, xpos: picked.pos || '',
+      feats: new Map(Object.entries(picked.featsMap || {})), readings: 1, choice: picked.raw, choiceStale: false, ...common
+    };
+  }
   return {
     lemma: stripGuessTags(first.lemma), upos: first.upos, xpos: first.pos || '',
-    feats: shared || new Map(), readings: chosen.length
+    feats: common.shared, readings: chosen.length, choice: null, choiceStale: Boolean(choice), ...common
   };
 }
 

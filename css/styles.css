@@ -1821,3 +1821,34 @@ body {
 .ci-tablewrap td, .ci-tablewrap th { vertical-align: top; min-width: 70px; }
 .ci-tablewrap td code { overflow-wrap: anywhere; }
 .ci-tablewrap td:nth-child(n+3) { min-width: 120px; }
+.ci-readings td { background: var(--surface-alt); }
+.ci-rd-box { display: grid; gap: 4px; font-size: 12px; }
+.ci-rd-head { font-weight: 600; }
+.ci-rd { display: flex; gap: 6px; align-items: flex-start; padding: 3px 6px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; }
+.ci-rd input { margin-top: 3px; flex: 0 0 auto; }
+.ci-rd code { overflow-wrap: anywhere; }
+.ci-focus td { box-shadow: inset 0 0 0 2px var(--primary); }
+.ci-edit-btn { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; padding: 0 4px; }
+.ci-edit-btn.ci-edit-on { background: #e0e7ff; border-color: var(--primary); }
+td.ci-form { font-weight: 700; }
+.ci-editor td { background: var(--surface-alt); }
+.ci-ed { display: grid; gap: 8px; font-size: 12px; }
+.ci-ed-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.ci-ed-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px 10px; }
+.ci-ed-field { display: flex; flex-direction: column; gap: 2px; font-weight: 600; color: var(--text-muted); }
+.ci-ed-field input, .ci-add input, .ci-add select, .ci-lemma-note input, .ci-lemma-note select { padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; background: var(--surface); }
+.ci-prov { font-weight: 400; font-size: 11px; color: var(--text-muted); overflow-wrap: anywhere; }
+.ci-ed-block { border-top: 1px dashed var(--border); padding-top: 6px; display: grid; gap: 4px; }
+.ci-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ci-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 4px 1px 6px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.ci-chip-added { background: var(--success-light); border-color: #a7f3d0; }
+.ci-chip-new { border-color: #f59e0b; background: var(--warning-light); }
+.ci-chip-x { border: none; background: transparent; cursor: pointer; color: var(--text-muted); font-size: 11px; padding: 0 2px; }
+.ci-chip-x:hover { color: #b91c1c; }
+.ci-add, .ci-lemma-note { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ci-keepalt { margin-left: auto; white-space: nowrap; }
+.ci-form { font-size: 14px; }
+details.ci-rd-box > summary { cursor: pointer; }
+details.ci-rd-box { display: block; }
+details.ci-rd-box > *:not(summary) { margin-top: 4px; }
+

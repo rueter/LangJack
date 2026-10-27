@@ -13,7 +13,7 @@
 
 import assert from 'node:assert';
 import fs from 'node:fs';
-import { featsFromGloss, mergeFeats, describeGlossMapping, baselineDependencies } from '../js/services/conllu-enhance.js';
+import { featsFromGloss, mergeFeats, describeGlossMapping, baselineDependencies, summarizeReadings } from '../js/services/conllu-enhance.js';
 import { parseConllu, sentenceRaw } from '../js/services/conllu-parser.js';
 import { conlluImportService as svc } from '../js/services/conllu-import-service.js';
 import { analyzerService } from '../js/services/analyzer-service.js';
@@ -232,6 +232,29 @@ if (fs.existsSync(realPath)) {
   console.log(`✓ Real file: ${result.written} empty cells filled in ${changedRows} rows; no non-empty value replaced; ID/FORM/DEPS untouched`);
 } else {
   console.log('(skipped: Apurinã file not found; set CONLLU_TEST_FILE to run)');
+}
+
+// --- Plain readings are preferred over derived ones when the lemma does not decide ---
+console.log('\n--- Testing reading selection ---');
+{
+  const reading = (raw, lemma, featsMap) => ({ raw, lemma, upos: 'NOUN', pos: 'N', featsMap });
+  const base = { Gender: 'Masc', Number: 'Sing', Case: 'Nom' };
+  const readings = [
+    reading('awa+v1+V+Der+Der/NomAct+N+Msc+Sg+PxSg3M+Possd+Nom', 'awa', { ...base, 'Person[psor]': '3', Possessed: 'Yes' }),
+    reading('awinhitxi+N+Msc+Sg+PxSg3M+Possd+Nom', 'awinhitxi', { ...base, 'Person[psor]': '3', Possessed: 'Yes' }),
+    reading('awa+v1+V+Der+Der/NomAct+N+Msc+Sg+NPossd+Nom', 'awa', { ...base, Possessed: 'No' }),
+    reading('awinhitxi+N+Msc+Sg+Possd+Nom', 'awinhitxi', { ...base, Possessed: 'Yes' })
+  ];
+  const picked = summarizeReadings(readings, { lemma: 'awinhi', upos: 'NOUN' });
+  assert.strictEqual(picked.lemma, 'awinhitxi', 'plain readings win when no lemma matches');
+  assert.strictEqual(picked.readings, 2);
+  assert.strictEqual(picked.feats.get('Possessed'), 'Yes', 'the plain readings agree on Possessed');
+  assert(!picked.feats.has('Person[psor]'), 'but not every plain reading has a possessor');
+  const onlyDerived = summarizeReadings([readings[0], readings[2]], { lemma: 'awinhi', upos: 'NOUN' });
+  assert.strictEqual(onlyDerived.readings, 2, 'derived readings are still used when nothing else exists');
+  const byLemma = summarizeReadings(readings, { lemma: 'awa', upos: 'NOUN' });
+  assert.strictEqual(byLemma.readings, 2, 'a matching lemma still decides, derived or not');
+  console.log('✓ Plain readings preferred over derived ones; a matching lemma still decides');
 }
 
 console.log('\nAll multi-column enhancement tests passed.');

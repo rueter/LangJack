@@ -216,6 +216,43 @@ export class FeatureInventory {
     return l ? [...l.misc].filter((k) => !UD_MISC_KEYS.includes(k)).sort() : [];
   }
 
+  /** Map key -> Set(values) of the Feature=Value pairs of one language (empty map when unknown). */
+  featureMap(lang) {
+    const map = new Map();
+    const l = lang ? this.languages[lang] : null;
+    if (!l) return map;
+    for (const pair of l.feats) {
+      const [key, value] = splitPair(pair);
+      if (!map.has(key)) map.set(key, new Set());
+      map.get(key).add(value);
+    }
+    return map;
+  }
+
+  /** Same, over every language except `except`: what is used elsewhere. */
+  otherFeatureMap(except = null) {
+    const map = new Map();
+    for (const [code, l] of Object.entries(this.languages)) {
+      if (code === except) continue;
+      for (const pair of l.feats) {
+        const [key, value] = splitPair(pair);
+        if (!map.has(key)) map.set(key, new Set());
+        map.get(key).add(value);
+      }
+    }
+    return map;
+  }
+
+  /** UPOS or DEPREL values of one language (own), or of all the other languages (other = true). */
+  labelValues(kind, lang, other = false) {
+    const out = new Set();
+    for (const [code, l] of Object.entries(this.languages)) {
+      if (other ? code === lang : code !== lang) continue;
+      for (const v of l[kind]) out.add(v);
+    }
+    return out;
+  }
+
   /** Short summary of what is known about a language, for display. */
   describeLanguage(lang) {
     const l = lang ? this.languages[lang] : null;

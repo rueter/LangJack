@@ -6,6 +6,7 @@
 
 import { ENHANCE_COLUMNS, LOCKED_COLUMNS, describeGlossMapping } from '../services/conllu-enhance.js';
 import { KNOWN_LANGUAGES } from '../services/analyzer-service.js';
+import { ManualEditError } from '../services/conllu-import-service.js';
 
 const COLUMN_INDEX = { id: 0, form: 1, lemma: 2, upos: 3, xpos: 4, feats: 5, head: 6, deprel: 7, deps: 8, misc: 9 };
 const COLUMN_HINT = {
@@ -18,6 +19,7 @@ const COLUMN_HINT = {
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
+const SOURCE_LABEL = { manual: 'by hand', analyzer: 'analyzer reading', gloss: 'gloss', dictionary: 'dictionary', 'gloss + analyzer': 'gloss + analyzer reading' };
 const breakable = (value) => esc(value).replace(/\|/g, '|<wbr>'); // lets long FEATS/MISC values wrap at the bars
 
 export class ConlluImportPanel {
@@ -45,6 +47,10 @@ export class ConlluImportPanel {
     this.glossLang = '';
     this.columns = new Set(['misc']); // columns the enhancement may fill; MISC only keeps the original behaviour
     this.showMapping = false;
+    this.choiceOnly = false; // list only sentences with a token that needs review (several readings, or a lemma marked uncertain)
+    this.editing = new Set(); // `${sentIndex}:${lineIdx}` of the tokens whose editor is open
+    this.featDraft = new Map(); // `${sentIndex}:${lineIdx}` -> feature picked in the add control (to offer its values)
+    this.focusLine = null; // line index of the token the user is working on (highlighted, scrolled into view)
     this.inventoryLang = 'auto'; // 'auto' = language of the text, 'none' = only what this file uses, or an inventory language code
     this.suggestions = new Map(); // `${sentIndex}:${lineIdx}:${column}` -> proposal (with .checked, .pick)
     this.fileSummary = null; // counts after a whole-file suggestion run
@@ -100,14 +106,16 @@ export class ConlluImportPanel {
       this.srcLang = fromName ? fromName[1] : (this.getSrcLang() || 'apu');
     }
     const sentences = this.service.parsed(this.currentId).sentences;
-    const items = sentences.filter((s) => !this.editedOnly || this.service.isEdited(this.currentId, s.index))
+    const needsChoice = this._sentencesNeedingReview();
+    const items = sentences.filter((s) => (!this.editedOnly || this.service.isEdited(this.currentId, s.index)) && (!this.choiceOnly || needsChoice.has(s.index)))
       .map((s) => {
         const edited = this.service.isEdited(this.currentId, s.index);
+        const marks = `${needsChoice.has(s.index) ? '<span class="ci-warn" title="Needs review: a token has several analyzer readings, or its lemma is marked uncertain or undecided">?</span>' : ''}${this.service.readingChoices(this.currentId, s.index).length ? '<span class="ci-edited" title="You picked a reading here">◆</span>' : ''}`;
         const active = s.index === this.currentSent ? ' ci-active' : '';
         return `<div class="ci-sent${active}" data-action="select-sent" data-index="${s.index}" title="${esc(s.text)}">
           <span class="treebank-order-badge">${s.index + 1}</span>
           <span class="ci-sent-text">${esc(s.sentId || '(no sent_id)')} · ${esc(s.text)}</span>
-          ${edited ? '<span class="ci-edited" title="Edited">●</span>' : ''}</div>`;
+          ${marks}${edited ? '<span class="ci-edited" title="Edited">●</span>' : ''}</div>`;
       }).join('');
 
     const convText = conv.key
@@ -137,6 +145,7 @@ export class ConlluImportPanel {
         <button class="btn btn-secondary btn-sm" data-action="suggest-file" title="Look up proposals for the selected columns for every sentence; nothing is written yet">🔎 Suggest for whole file</button>
         <button class="btn btn-secondary btn-sm" data-action="revert-all" ${sum.editedCount ? '' : 'disabled'}>↩ Revert all edits</button>
         <label class="ci-inline"><input type="checkbox" data-role="edited-only" ${this.editedOnly ? 'checked' : ''}> edited sentences only</label>
+        <label class="ci-inline" title="Tokens with several readings (after a Suggest run) or a lemma you marked uncertain or undecided"><input type="checkbox" data-role="choice-only" ${this.choiceOnly ? 'checked' : ''}> needing review only</label>
       </div>
       <p class="vw-hint">${convText}</p>
       ${this.renderColumnSelector()}
@@ -150,6 +159,8 @@ export class ConlluImportPanel {
           <input type="text" data-role="export-name" value="${esc(sum.exportName)}"></label>
         <button class="btn btn-primary" data-action="export-file">💾 Download working copy</button>
         <button class="btn btn-secondary" data-action="download-original" title="The file exactly as imported">⬇ Original</button>
+        <label class="ci-inline ci-grow" title="Off by default: the exported file then holds exactly your edits and nothing else"><input type="checkbox" data-role="export-uncertainty" ${this.service.exportOptions(this.currentId).recordUncertainty ? 'checked' : ''}>
+          also record uncertain lemmas in MISC (<code>LemmaStatus=</code>, <code>AltLemma=</code>) — optional, off by default</label>
       </div>`;
   }
 
@@ -199,19 +210,41 @@ export class ConlluImportPanel {
       <tbody>${shown}</tbody></table>${issues.length > 50 ? `<div class="vw-hint">…and ${issues.length - 50} more. Rows with problems are kept as they are.</div>` : ''}</div>`;
   }
 
+  /** Sentences that have a token with several readings and no choice yet (from the current proposals). */
+  _sentencesNeedingChoice() {
+    const set = new Set();
+    for (const f of this.suggestions.values()) if (f.needsChoice) set.add(f.sentIndex);
+    return set;
+  }
+
+  /** Tokens to come back to: several readings without a choice (current proposals) or a lemma marked uncertain/undecided. */
+  _reviewTargets() {
+    const seen = new Map();
+    for (const f of this.suggestions.values()) if (f.needsChoice) seen.set(`${f.sentIndex}:${f.lineIdx}`, [f.sentIndex, f.lineIdx]);
+    for (const r of this.service.reviewTokens(this.currentId)) seen.set(`${r.sentIndex}:${r.lineIdx}`, [r.sentIndex, r.lineIdx]);
+    return [...seen.values()].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  }
+
+  _sentencesNeedingReview() {
+    return new Set(this._reviewTargets().map((t) => t[0]));
+  }
+
   renderFileSummary(fs) {
     const cols = [...this.columns].filter((c) => fs[c]);
     const rows = cols.map((c) => {
       const n = fs[c];
-      return `<tr><td>${c.toUpperCase()}</td><td>${n.fill}</td><td>${n.conflict}</td><td>${n.same}</td><td>${n.none}</td><td>${n.flagged}</td>
+      return `<tr><td>${c.toUpperCase()}</td><td>${n.fill}</td><td>${n.conflict}</td><td>${n.same}</td><td>${n.none}</td><td>${n.flagged}</td><td>${n.choice}</td>
         <td><button class="btn btn-primary btn-sm" data-action="apply-col-fills" data-col="${c}" ${n.fill ? '' : 'disabled'}>Fill ${n.fill} empty</button>
         <button class="btn btn-secondary btn-sm" data-action="apply-col-replace" data-col="${c}" ${n.conflict ? '' : 'disabled'}>Accept ${n.conflict} changes…</button></td></tr>`;
     }).join('');
     const total = cols.reduce((n, c) => n + fs[c].fill, 0);
+    const ambiguous = new Set([...this.suggestions.values()].filter((f) => f.needsChoice).map((f) => `${f.sentIndex}:${f.lineIdx}`)).size;
     return `<div class="ci-filesummary"><div><b>Whole file</b>: proposals for the selected columns. Nothing has been written yet.</div>
-      <table class="dict-table"><thead><tr><th>Column</th><th>Empty, can fill</th><th>Value exists, would change</th><th>Same</th><th>No source</th><th>New pair: review per sentence</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      <table class="dict-table"><thead><tr><th>Column</th><th>Empty, can fill</th><th>Value exists, would change</th><th>Same</th><th>No source</th><th>New pair: review per sentence</th><th>Several readings: needs your choice</th><th></th></tr></thead><tbody>${rows}</tbody></table>
       <div><button class="btn btn-primary btn-sm" data-action="apply-all-fills" ${total ? '' : 'disabled'}>Fill all ${total} empty cells</button>
       <button class="btn btn-secondary btn-sm" data-action="clear-file-summary">Dismiss</button>
+      ${ambiguous ? `<button class="btn btn-secondary btn-sm" data-action="next-ambiguous" title="Jump to the next token whose analyzer readings you have to choose between">Next token needing a choice ▶</button>
+      <span class="ci-warn"><b>${ambiguous}</b> token${ambiguous === 1 ? ' has' : 's have'} several readings. They are not filled in bulk: choose a reading in the sentence, or tick the default.</span>` : ''}
       <span class="vw-hint">Values that already exist are only changed by "Accept … changes" (after confirmation) or by ticking them in a sentence.</span></div></div>`;
   }
 
@@ -223,6 +256,8 @@ export class ConlluImportPanel {
     const rows = sent.lines.map((line, lineIdx) => ({ line, lineIdx })).filter((r) => r.line.kind === 'token' || r.line.kind === 'mwt' || r.line.kind === 'malformed' || r.line.kind === 'empty');
     const fields = [...this.suggestions.values()].filter((f) => f.sentIndex === sent.index);
     const byToken = new Map(fields.map((f) => [`${f.lineIdx}:${f.column}`, f]));
+    const readingOf = new Map(); // lineIdx -> { reading, needsChoice }
+    for (const f of fields) if (f.reading && (f.reading.alternatives || f.reading.choice) && !readingOf.has(f.lineIdx)) readingOf.set(f.lineIdx, f);
     const overrides = this.service.overrides(this.currentId)[sent.index];
     const shown = ENHANCE_COLUMNS.filter((c) => this.columns.has(c));
     const showLemma = !this.columns.has('lemma');
@@ -248,11 +283,20 @@ export class ConlluImportPanel {
         if (c === 'misc') current = current.split('|').filter((x) => /^gloss[[_]/i.test(x)).join(' ') || '—';
         return `<td class="${changed ? 'ci-changed' : ''}"><div class="ci-old"><code>${breakable(current)}</code></div>${f ? this.renderProposal(f) : ''}</td>`;
       }).join('');
-      return `<tr><td>${esc(cols[0])}</td><td>${esc(cols[1])}</td>${showLemma ? `<td>${esc(now[2])}</td>` : ''}${cells}</tr>`;
+      const picker = readingOf.has(lineIdx) ? `<tr class="ci-readings"><td colspan="${width}">${this.renderReadingPicker(sent.index, lineIdx, cols[1], readingOf.get(lineIdx))}</td></tr>` : '';
+      const focus = lineIdx === this.focusLine ? ' class="ci-focus"' : '';
+      const open = this.editing.has(`${sent.index}:${lineIdx}`);
+      const editedHere = this.service.editedFields(this.currentId, sent.index, lineIdx);
+      const hasNote = this.service.tokenNote(this.currentId, sent.index, lineIdx).lemmaStatus;
+      const editBtn = `<button class="ci-edit-btn${open ? ' ci-edit-on' : ''}" data-action="toggle-edit" data-sent="${sent.index}" data-line="${lineIdx}" title="Edit this token by hand: FEATS pairs, UPOS, DEPREL, LEMMA, XPOS, MISC">✎</button>`;
+      const editor = open ? `<tr class="ci-editor"><td colspan="${width}">${this.renderEditor(sent.index, lineIdx)}</td></tr>` : '';
+      return `<tr${focus}><td>${esc(cols[0])} ${editBtn}${editedHere.cells.length || editedHere.misc.length ? '<span class="ci-edited" title="Edited">●</span>' : ''}${hasNote ? `<span class="ci-warn" title="Lemma ${esc(hasNote)}">≈</span>` : ''}</td><td class="ci-form">${esc(cols[1])}</td>${showLemma ? `<td><span class="ci-muted">file says</span> ${esc(cols[2])}${now[2] !== cols[2] ? ` <span class="ci-muted">· now</span> <b>${esc(now[2])}</b>` : ''}</td>` : ''}${cells}</tr>${picker}${editor}`;
     }).join('');
 
     const checked = fields.filter((f) => f.checked).length;
-    const diff = edited ? this.renderDiff(sent.index) : '<div class="vw-hint">No edits in this sentence: it is exported exactly as in the original.</div>';
+    const hasChoices = this.service.readingChoices(this.currentId, sent.index).length > 0;
+    const hasNotes = this.service.sentenceNotes(this.currentId, sent.index).length > 0;
+    const diff = edited || hasChoices || hasNotes ? this.renderDiff(sent.index) : '<div class="vw-hint">No edits in this sentence: it is exported exactly as in the original.</div>';
     return `
       <div class="ci-detail-head"><b>${esc(sent.sentId || `Sentence ${sent.index + 1}`)}</b>
         <span class="vw-hint">${esc(sent.text)}</span></div>
@@ -260,11 +304,127 @@ export class ConlluImportPanel {
         <button class="btn btn-secondary btn-sm" data-action="suggest-sent">🔎 Suggest for this sentence</button>
         <button class="btn btn-primary btn-sm" data-action="apply-sent" ${checked ? '' : 'disabled'}>Apply ${checked} checked</button>
         <button class="btn btn-secondary btn-sm" data-action="reject-sent" ${fields.length ? '' : 'disabled'} title="Discard the proposals of this sentence; nothing is written">✗ Reject proposals</button>
-        <button class="btn btn-secondary btn-sm" data-action="revert-sent" ${edited ? '' : 'disabled'}>↩ Revert sentence</button>
+        <button class="btn btn-secondary btn-sm" data-action="revert-sent" ${edited || hasChoices ? '' : 'disabled'}>↩ Revert sentence</button>
+        <button class="btn btn-secondary btn-sm" data-action="next-ambiguous" ${this._reviewTargets().length ? '' : 'disabled'} title="Jump to the next token that needs review: several readings to choose between, or a lemma marked uncertain">Next token needing review ▶</button>
       </div>
       <div class="ci-tablewrap"><table class="dict-table"><thead><tr><th>ID 🔒</th><th>Form 🔒</th>${showLemma ? '<th>Lemma</th>' : ''}${head}</tr></thead>
         <tbody>${body}</tbody></table></div>
       <h5 class="ci-h">Changes against the original</h5>${diff}`;
+  }
+
+  /** "analyzer reading: awinhitxi+N… · 27/10/2026" or "by hand · …": why a value is there. */
+  _prov(entry) {
+    if (!entry) return '';
+    const label = SOURCE_LABEL[entry.source] || entry.source;
+    const when = entry.at ? ` · ${new Date(entry.at).toLocaleDateString()}` : '';
+    return `${label}${entry.detail ? `: ${entry.detail}` : ''}${when}`;
+  }
+
+  _inv() {
+    return { srcLang: this.srcLang || this.getSrcLang() || 'apu', inventoryLang: this.inventoryLang };
+  }
+
+  /** Lemma status select and the alternatives considered: shared by the picker and the editor. */
+  renderLemmaNote(sentIndex, lineIdx) {
+    const note = this.service.tokenNote(this.currentId, sentIndex, lineIdx);
+    const data = `data-sent="${sentIndex}" data-line="${lineIdx}"`;
+    const alts = note.alternatives.map((a) => `<span class="ci-chip"><code>${esc(a)}</code><button class="ci-chip-x" data-action="alt-remove" ${data} data-lemma="${esc(a)}" title="Forget this alternative">✕</button></span>`).join('');
+    return `<div class="ci-lemma-note"><label class="ci-inline" title="The lemma is your hypothesis: say so if you are not sure. Optional; only written to the file if you turn that option on.">Lemma is
+        <select data-role="lemma-status" ${data}>
+          <option value=""${note.lemmaStatus ? '' : ' selected'}>decided</option>
+          <option value="uncertain"${note.lemmaStatus === 'uncertain' ? ' selected' : ''}>uncertain</option>
+          <option value="undecided"${note.lemmaStatus === 'undecided' ? ' selected' : ''}>undecided</option></select></label>
+      <span class="ci-muted">alternatives considered:</span> ${alts || '<span class="ci-muted">none</span>'}
+      <input type="text" data-role="alt-input" ${data} size="12" placeholder="another lemma">
+      <button class="btn btn-secondary btn-sm" data-action="alt-add" ${data}>Add</button></div>`;
+  }
+
+  /**
+   * The readings of a token, looked up by its FORM (the form is primary; the file's lemma is only a hypothesis).
+   * Every analyzer reading is listed with its lemma, marked when it equals or differs from what the file says and
+   * whether it is in the default proposal. The default (features all default readings share) is pre-selected;
+   * picking a reading makes it supply LEMMA, UPOS, XPOS and FEATS together.
+   */
+  renderReadingPicker(sentIndex, lineIdx, form, f) {
+    const r = f.reading;
+    const fileLemma = this.service.parsed(this.currentId).sentences[sentIndex].lines[lineIdx].cols[2];
+    const nowLemma = this.service.workingCols(this.currentId, sentIndex, lineIdx)[2];
+    const name = `rd-${sentIndex}-${lineIdx}`;
+    const data = `data-role="reading-pick" data-sent="${sentIndex}" data-line="${lineIdx}"`;
+    const option = (c) => `<label class="ci-rd"><input type="radio" name="${name}" ${data} value="${esc(c.raw)}"${r.choice === c.raw ? ' checked' : ''}>
+      <span><code>${esc(c.raw)}</code><br>lemma <b>${esc(c.lemma)}</b> ${c.matchesFileLemma ? '<span class="ci-fill">= current lemma</span>' : '<span class="ci-muted">≠ current lemma</span>'}
+        · UPOS <b>${esc(c.upos)}</b> · XPOS <b>${esc(c.xpos || '—')}</b> · FEATS <code>${breakable(c.feats)}</code>
+        ${c.inDefault ? '<span class="ci-muted">(in default)</span>' : '<span class="ci-muted">(not in default)</span>'}${c.derived ? ' <span class="ci-muted">(derived)</span>' : ''}</span>
+      <button class="btn btn-secondary btn-sm ci-keepalt" data-action="alt-add" data-sent="${sentIndex}" data-line="${lineIdx}" data-lemma="${esc(c.lemma)}" title="Remember this lemma as an alternative without choosing it">keep lemma as alternative</button></label>`;
+    const status = r.choice ? `<span class="ci-fill">chosen by you</span> <a href="#" data-action="reading-reset" data-sent="${sentIndex}" data-line="${lineIdx}">reset to default</a>`
+      : (r.ambiguous ? '<span class="ci-warn"><b>needs your choice</b></span>' : '<span class="ci-muted">default is clear; other readings exist</span>');
+    const nDefault = r.candidates.filter((c) => c.inDefault).length;
+    const sorted = [...r.candidates].sort((a, b) => Number(b.inDefault) - Number(a.inDefault) || Number(b.matchesFileLemma) - Number(a.matchesFileLemma));
+    return `<details class="ci-rd-box"${r.ambiguous || r.choice ? ' open' : ''}><summary class="ci-rd-head">Form <b class="ci-form">${esc(form)}</b> · file says lemma <code>${esc(fileLemma)}</code>${nowLemma !== fileLemma ? ` · now <code>${esc(nowLemma)}</code>` : ''} · ${r.candidates.length} reading${r.candidates.length > 1 ? 's' : ''}: ${status}</summary>
+      <label class="ci-rd"><input type="radio" name="${name}" ${data} value=""${r.choice ? '' : ' checked'}>
+        <span><b>Default: shared features of the ${nDefault} reading${nDefault > 1 ? 's' : ''} marked "in default"</b> <span class="ci-muted">(chosen by ${esc(r.defaultReason || 'all readings')}; LEMMA, UPOS and XPOS from the first)</span><br>FEATS <code>${breakable(r.sharedFeats)}</code></span></label>
+      ${sorted.map(option).join('')}
+      ${this.renderLemmaNote(sentIndex, lineIdx)}</details>`;
+  }
+
+  /** Hand-editing of one token: FEATS chips, UPOS / DEPREL / LEMMA / XPOS / HEAD / DEPS fields, MISC chips; ID and FORM are locked. */
+  renderEditor(sentIndex, lineIdx) {
+    const id = this.currentId;
+    const key = `${sentIndex}:${lineIdx}`;
+    const data = `data-sent="${sentIndex}" data-line="${lineIdx}"`;
+    const opts = this._inv();
+    const orig = this.service.parsed(id).sentences[sentIndex].lines[lineIdx].cols;
+    const now = this.service.workingCols(id, sentIndex, lineIdx);
+    const edited = this.service.editedFields(id, sentIndex, lineIdx);
+    const prov = this.service.provenance(id, sentIndex, lineIdx);
+
+    const field = (col, listId = null) => {
+      const idx = COLUMN_INDEX[col];
+      const changed = edited.cells.includes(col);
+      const why = changed ? this._prov(prov[col]) || 'edited' : 'original';
+      return `<label class="ci-ed-field">${col.toUpperCase()}
+        <input type="text" data-role="cell-edit" ${data} data-col="${col}" value="${esc(now[idx])}"${listId ? ` list="${listId}"` : ''}>
+        <span class="ci-prov">${esc(why)}${changed ? ` · <a href="#" data-action="revert-cell" ${data} data-col="${col}" title="Original: ${esc(orig[idx])}">↩ back to ${esc(orig[idx])}</a>` : ''}</span></label>`;
+    };
+
+    const pairs = this.service.featsPairs(id, sentIndex, lineIdx, opts);
+    const chips = pairs.map((p) => {
+      const cls = p.layer === 'new' ? ' ci-chip-new' : '';
+      const tip = [p.label, p.languages.length ? `used in ${p.languages.slice(0, 6).join(', ')}` : '', p.inOriginal ? 'in the original file' : 'not in the original', p.provenance ? this._prov(p.provenance) : ''].filter(Boolean).join(' — ');
+      return `<span class="ci-chip${cls}${p.inOriginal ? '' : ' ci-chip-added'}" title="${esc(tip)}"><code>${esc(p.pair)}</code>${p.layer === 'new' ? '<b class="ci-warn">new</b>' : ''}<button class="ci-chip-x" data-action="feat-remove" ${data} data-key="${esc(p.key)}" title="Remove ${esc(p.key)}">✕</button></span>`;
+    }).join('') || '<span class="ci-muted">no features (<code>_</code>)</span>';
+    const keys = this.service.featureChoices(id, opts);
+    const draft = this.featDraft.get(key) || '';
+    const vals = draft ? this.service.valueChoices(id, draft, opts) : { own: [], other: [] };
+    const opt = (list, sel) => list.map((v) => `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(v)}</option>`).join('');
+    const featAdd = `<div class="ci-add"><select data-role="feat-key" ${data}><option value="">Feature…</option>
+        <optgroup label="This language, this file, universal">${opt(keys.own, draft)}</optgroup>
+        ${keys.other.length ? `<optgroup label="Used in other languages">${opt(keys.other, draft)}</optgroup>` : ''}</select>
+      <select data-role="feat-val" ${data}><option value="">Value…</option>
+        <optgroup label="Known for this language">${opt(vals.own)}</optgroup>
+        ${vals.other.length ? `<optgroup label="Used in other languages">${opt(vals.other)}</optgroup>` : ''}</select>
+      <input type="text" data-role="feat-custom" ${data} size="18" placeholder="or type Feature=Value">
+      <button class="btn btn-secondary btn-sm" data-action="feat-add" ${data}>Add feature</button></div>`;
+
+    const segs = this.service.miscSegments(id, sentIndex, lineIdx);
+    const miscChips = segs.map((m) => `<span class="ci-chip${m.inOriginal ? '' : ' ci-chip-added'}" title="${esc(m.inOriginal ? 'in the original file' : (m.provenance ? this._prov(m.provenance) : 'not in the original'))}"><code>${breakable(m.value === '' ? m.key : `${m.key}=${m.value}`)}</code><button class="ci-chip-x" data-action="misc-remove" ${data} data-key="${esc(m.key)}" title="Remove ${esc(m.key)}">✕</button></span>`).join('') || '<span class="ci-muted">no MISC (<code>_</code>)</span>';
+    const miscAdd = `<div class="ci-add"><input type="text" data-role="misc-key" ${data} size="12" placeholder="Key"><input type="text" data-role="misc-val" ${data} size="16" placeholder="value"><button class="btn btn-secondary btn-sm" data-action="misc-add" ${data}>Add MISC</button></div>`;
+
+    const anyEdit = edited.cells.length || edited.misc.length;
+    return `<div class="ci-ed"><div class="ci-ed-head"><b>${esc(orig[1])}</b> (ID ${esc(orig[0])}) <span class="ci-muted">ID and FORM are locked. Everything below is written to the working copy at once; the original file is never touched, and each edit can be taken back.</span>
+        ${anyEdit ? `<button class="btn btn-secondary btn-sm" data-action="revert-token" ${data}>↩ Revert this token to the original</button>` : ''}</div>
+      <div class="ci-ed-grid">${field('lemma')}${field('upos', 'ci-dl-upos')}${field('xpos')}${field('head')}${field('deprel', 'ci-dl-deprel')}${field('deps')}</div>
+      <div class="ci-ed-block"><b>Lemma</b> <span class="ci-muted">(the form is primary; the lemma is your hypothesis. File says: <code>${esc(orig[2])}</code>)</span>${this.renderLemmaNote(sentIndex, lineIdx)}</div>
+      <div class="ci-ed-block"><b>FEATS</b> <span class="ci-muted">${esc(prov.feats ? this._prov(prov.feats) : (edited.cells.includes('feats') ? 'edited' : 'original'))}</span>${edited.cells.includes('feats') ? ` · <a href="#" data-action="revert-cell" ${data} data-col="feats" title="Original: ${esc(orig[5])}">↩ back to ${esc(orig[5])}</a>` : ''}
+        <div class="ci-chips">${chips}</div>${featAdd}</div>
+      <div class="ci-ed-block"><b>MISC</b>${edited.misc.length ? ` <span class="ci-muted">edited keys:</span> ${edited.misc.map((k) => `<a href="#" data-action="revert-misc" ${data} data-key="${esc(k)}" title="Take this key back to the original">↩ ${esc(k)}</a>`).join(' · ')}` : ''}
+        <div class="ci-chips">${miscChips}</div>${miscAdd}</div>
+      <datalist id="ci-dl-upos">${this._labelOptions('upos', opts)}</datalist><datalist id="ci-dl-deprel">${this._labelOptions('deprel', opts)}</datalist></div>`;
+  }
+
+  _labelOptions(kind, opts) {
+    const c = this.service.labelChoices(this.currentId, kind, opts);
+    return [...c.own, ...c.other].map((v) => `<option value="${esc(v)}">`).join('');
   }
 
   /** One proposal inside a cell: old value is shown above it; a tick accepts it. */
@@ -292,7 +452,10 @@ export class ConlluImportPanel {
       <td>${c.from === null ? '<i>(none)</i>' : `<code>${esc(c.from)}</code>`}</td><td>${c.to === null ? '<i>(removed)</i>' : `<code>${esc(c.to)}</code>`}</td></tr>`).join('');
     const lines = diff.lines.filter((l, i, all) => l.type !== 'same' || all.slice(Math.max(0, i - 1), i + 2).some((n) => n.type !== 'same'))
       .map((l) => `<div class="ci-line ci-line-${l.type}">${l.type === 'added' ? '+' : l.type === 'removed' ? '−' : ' '} ${esc(l.text)}</div>`).join('');
-    return `<table class="dict-table"><thead><tr><th>Token</th><th>Field</th><th>Original</th><th>Working copy</th></tr></thead><tbody>${changes}</tbody></table>
+    const choices = diff.choices.map((c) => `<tr><td>${esc(c.tokenId)} ${esc(c.form)}</td><td>reading choice</td><td><i>(default rule)</i></td><td><code>${esc(c.raw)}</code></td></tr>`).join('');
+    const notes = diff.notes.map((n) => `<tr><td>${esc(n.tokenId)} ${esc(n.form)}</td><td>lemma note</td><td><i>(none)</i></td><td>${esc(n.lemmaStatus || '')}${n.alternatives.length ? ` · also considered ${esc(n.alternatives.join(', '))}` : ''}</td></tr>`).join('');
+    return `<table class="dict-table"><thead><tr><th>Token</th><th>Field</th><th>Original</th><th>Working copy</th></tr></thead><tbody>${choices}${changes}${notes}</tbody></table>
+      ${diff.notes.length ? '<div class="vw-hint">Lemma notes are written to the exported file only if you turn on "also record uncertain lemmas in MISC".</div>' : ''}
       <details class="ci-rawdiff"><summary>Line diff</summary><pre class="export-preview-box ci-pre">${lines}</pre></details>`;
   }
 
@@ -313,6 +476,18 @@ export class ConlluImportPanel {
         case 'load-docfeats': this.root.querySelector('[data-role="docfeats-input"]').click(); break;
         case 'toggle-mapping': this.showMapping = !this.showMapping; this.render(); break;
         case 'reject-sent': this.rejectSentence(); break;
+        case 'next-ambiguous': this.nextAmbiguous(); break;
+        case 'toggle-edit': this.toggleEdit(target.dataset); break;
+        case 'feat-add': await this.featAdd(target); break;
+        case 'feat-remove': await this.featRemove(target.dataset); break;
+        case 'misc-add': await this.miscAdd(target); break;
+        case 'misc-remove': await this.miscRemove(target.dataset); break;
+        case 'revert-cell': await this.revertCell(target.dataset); break;
+        case 'revert-misc': await this.revertMisc(target.dataset); break;
+        case 'revert-token': await this.revertToken(target.dataset); break;
+        case 'alt-add': await this.altAdd(target); break;
+        case 'alt-remove': await this.altRemove(target.dataset); break;
+        case 'reading-reset': await this.pickReading(Number(target.dataset.sent), Number(target.dataset.line), null); break;
         case 'col-check': this.checkColumn(target.dataset.col, target.dataset.mode); break;
         case 'apply-col-fills': await this.applyFile(target.dataset.col, 'fill'); break;
         case 'apply-col-replace': await this.applyFile(target.dataset.col, 'replace'); break;
@@ -356,6 +531,22 @@ export class ConlluImportPanel {
         this.glossLang = el.value.trim();
         this.suggestions.clear();
         this.fileSummary = null;
+        this.render();
+      } else if (role === 'reading-pick') {
+        await this.pickReading(Number(el.dataset.sent), Number(el.dataset.line), el.value || null);
+      } else if (role === 'cell-edit') {
+        await this.cellEdit(el);
+      } else if (role === 'feat-key') {
+        this.featDraft.set(`${el.dataset.sent}:${el.dataset.line}`, el.value);
+        this.render();
+      } else if (role === 'lemma-status') {
+        await this.service.setLemmaStatus(this.currentId, Number(el.dataset.sent), Number(el.dataset.line), el.value || null);
+        this.render();
+      } else if (role === 'export-uncertainty') {
+        await this.service.setExportOption(this.currentId, 'recordUncertainty', el.checked);
+        this.showToast(el.checked ? 'The exported file will also carry LemmaStatus= and AltLemma= in MISC for tokens you marked.' : 'Uncertain lemmas are not written to the exported file.', 'info');
+      } else if (role === 'choice-only') {
+        this.choiceOnly = el.checked;
         this.render();
       } else if (role === 'edited-only') {
         this.editedOnly = el.checked;
@@ -433,7 +624,7 @@ export class ConlluImportPanel {
 
   _remember(list) {
     for (const f of list) {
-      f.checked = f.status === 'fill' && !f.needsConfirm; // changes to existing values and new pairs are never pre-checked
+      f.checked = f.status === 'fill' && !f.needsConfirm && !f.needsChoice; // changes to existing values, new pairs and tokens needing a reading choice are never pre-checked
       this.suggestions.set(`${f.sentIndex}:${f.lineIdx}:${f.column}`, f);
     }
   }
@@ -462,15 +653,169 @@ export class ConlluImportPanel {
     this.showToast(n || c ? `${n} empty cell${n === 1 ? '' : 's'} can be filled, ${c} existing value${c === 1 ? '' : 's'} would change. Tick what you want and click Apply.` : 'Nothing to propose for this sentence.', n || c ? 'success' : 'info');
   }
 
+  /** Stores (or resets) the reading chosen for a token and refreshes that sentence's proposals. */
+  async pickReading(sentIndex, lineIdx, raw) {
+    await this.service.setReadingChoice(this.currentId, sentIndex, lineIdx, raw);
+    this.currentSent = sentIndex;
+    this.focusLine = lineIdx;
+    await this.suggestSentence(true);
+    this.showToast(raw ? 'Reading chosen: LEMMA, UPOS, XPOS and FEATS of this token now follow it.' : 'Back to the default (shared features).', 'info');
+  }
+
+  /** Jumps to the next token that needs review (after the current one, across sentences): several readings, or a lemma marked uncertain. */
+  nextAmbiguous() {
+    const targets = this._reviewTargets();
+    if (!targets.length) { this.showToast('Nothing needs review yet (run Suggest first, or mark a lemma uncertain).', 'info'); return; }
+    const here = [this.currentSent, this.focusLine ?? -1];
+    const next = targets.find((p) => p[0] > here[0] || (p[0] === here[0] && p[1] > here[1])) || targets[0];
+    this.currentSent = next[0];
+    this.focusLine = next[1];
+    this.render();
+    setTimeout(() => { const row = this.root.querySelector('.ci-focus'); if (row && row.scrollIntoView) row.scrollIntoView({ block: 'center' }); }, 0);
+  }
+
+  // ---- manual editing ---------------------------------------------------------------------
+
+  toggleEdit({ sent, line }) {
+    const key = `${sent}:${line}`;
+    if (this.editing.has(key)) this.editing.delete(key); else this.editing.add(key);
+    this.focusLine = Number(line);
+    this.render();
+  }
+
+  _ask(err) {
+    const lang = this.service.inventoryLanguage(this._inv().srcLang, this.inventoryLang);
+    const where = lang ? `the ${lang} inventory` : 'the inventory';
+    switch (err.code) {
+      case 'NEW_PAIR':
+        return { flag: 'confirmNew', message: `"${err.pair}" is not in ${where}, not used in this file and not used in any other language of the inventory.\n\nAdd it anyway? Check the language's UD documentation first.` };
+      case 'NEW_VALUE':
+        return { flag: 'confirmNew', message: `"${err.value}" is not a known ${String(err.column).toUpperCase()} value in ${where}, in this file or in other languages.\n\nUse it anyway?` };
+      case 'REPLACE':
+        return { flag: 'replace', message: `${err.message}\n\nChange it${err.pair ? ` to ${err.pair}` : ''}? The original file keeps its value; you can take the edit back.` };
+      case 'REMOVE_ORIGINAL':
+        return { flag: 'confirmOriginal', message: `${err.message}\n\nRemove it from the working copy? The original file stays untouched; you can take the removal back (revert the cell or the token).` };
+      default:
+        return null;
+    }
+  }
+
+  /** Runs a manual edit; when the service asks for a confirmation (new pair, replace, remove an original), asks the user and retries. */
+  async _manual(run) {
+    let flags = {};
+    for (let i = 0; i < 4; i++) {
+      try {
+        await run(flags);
+        if ([...this.suggestions.values()].some((f) => f.sentIndex === this.currentSent)) await this.suggestSentence(true);
+        else this.render();
+        return true;
+      } catch (err) {
+        if (!(err instanceof ManualEditError)) throw err;
+        const ask = this._ask(err);
+        if (!ask) { this.showToast(err.message, 'error'); this.render(); return false; }
+        if (!this.confirmAction(ask.message)) { this.render(); return false; }
+        flags = { ...flags, [ask.flag]: true };
+      }
+    }
+    return false;
+  }
+
+  _where({ sent, line }) {
+    this.currentSent = Number(sent);
+    this.focusLine = Number(line);
+    return [Number(sent), Number(line)];
+  }
+
+  async cellEdit(el) {
+    const [sent, line] = this._where(el.dataset);
+    await this._manual((flags) => this.service.setCellManual(this.currentId, sent, line, el.dataset.col, el.value, { ...this._inv(), ...flags }));
+  }
+
+  async featAdd(button) {
+    const [sent, line] = this._where(button.dataset);
+    const box = button.closest('.ci-ed');
+    const custom = box.querySelector('[data-role="feat-custom"]').value.trim();
+    const key = box.querySelector('[data-role="feat-key"]').value;
+    const val = box.querySelector('[data-role="feat-val"]').value;
+    const pair = custom || (key && val ? `${key}=${val}` : '');
+    if (!pair) { this.showToast('Pick a feature and a value, or type Feature=Value.', 'info'); return; }
+    if (await this._manual((flags) => this.service.addFeature(this.currentId, sent, line, pair, { ...this._inv(), ...flags }))) this.featDraft.delete(`${sent}:${line}`);
+  }
+
+  async featRemove(d) {
+    const [sent, line] = this._where(d);
+    await this._manual((flags) => this.service.removeFeature(this.currentId, sent, line, d.key, flags));
+  }
+
+  async miscAdd(button) {
+    const [sent, line] = this._where(button.dataset);
+    const box = button.closest('.ci-ed');
+    const key = box.querySelector('[data-role="misc-key"]').value.trim();
+    const val = box.querySelector('[data-role="misc-val"]').value;
+    if (!key) { this.showToast('Type a MISC key (and a value).', 'info'); return; }
+    await this._manual((flags) => this.service.setMiscManual(this.currentId, sent, line, key, val, flags));
+  }
+
+  async miscRemove(d) {
+    const [sent, line] = this._where(d);
+    await this._manual((flags) => this.service.removeMiscManual(this.currentId, sent, line, d.key, flags));
+  }
+
+  async revertCell(d) {
+    const [sent, line] = this._where(d);
+    await this.service.revertCell(this.currentId, sent, line, d.col);
+    await this._manual(async () => {});
+    this.showToast(`${d.col.toUpperCase()} is back to the original.`, 'info');
+  }
+
+  async revertMisc(d) {
+    const [sent, line] = this._where(d);
+    await this.service.revertMiscKey(this.currentId, sent, line, d.key);
+    await this._manual(async () => {});
+  }
+
+  async revertToken(d) {
+    const [sent, line] = this._where(d);
+    if (!this.confirmAction('Take every edit of this token back to the original? Your notes about its lemma stay.')) return;
+    await this.service.revertToken(this.currentId, sent, line);
+    await this._manual(async () => {});
+    this.showToast('Token reverted to the original.', 'info');
+  }
+
+  async altAdd(button) {
+    const [sent, line] = this._where(button.dataset);
+    let lemma = button.dataset.lemma;
+    if (lemma === undefined) {
+      const input = button.closest('.ci-lemma-note').querySelector('[data-role="alt-input"]');
+      lemma = input.value.trim();
+    }
+    try {
+      await this.service.addLemmaAlternative(this.currentId, sent, line, lemma);
+    } catch (err) {
+      if (err instanceof ManualEditError) { this.showToast(err.message, 'error'); return; }
+      throw err;
+    }
+    this.render();
+    this.showToast(`Kept "${lemma}" as an alternative lemma (nothing is changed in the file).`, 'info');
+  }
+
+  async altRemove(d) {
+    const [sent, line] = this._where(d);
+    await this.service.removeLemmaAlternative(this.currentId, sent, line, d.lemma);
+    this.render();
+  }
+
   async suggestFile() {
     await this._prepare();
     const list = this.service.suggestEnhancements(this.currentId, null, this._options());
     this.suggestions.clear();
     this._remember(list);
     const summary = {};
-    for (const c of this.columns) summary[c] = { fill: 0, conflict: 0, same: 0, none: 0, flagged: 0 };
+    for (const c of this.columns) summary[c] = { fill: 0, conflict: 0, same: 0, none: 0, flagged: 0, choice: 0 };
     for (const f of list) {
-      if (f.needsConfirm && (f.status === 'fill' || f.status === 'conflict')) summary[f.column].flagged++;
+      const actionable = f.status === 'fill' || f.status === 'conflict';
+      if (f.needsConfirm && actionable) summary[f.column].flagged++;
+      else if (f.needsChoice && actionable) summary[f.column].choice++;
       else summary[f.column][f.status]++;
     }
     this.fileSummary = summary;
@@ -538,7 +883,7 @@ export class ConlluImportPanel {
   /** File-wide apply for one column ('fill' = empty cells only, 'replace' = changes to existing values) or all fills. */
   async applyFile(column, kind) {
     const wanted = kind === 'replace' ? 'conflict' : 'fill';
-    const fields = [...this.suggestions.values()].filter((f) => f.status === wanted && !f.needsConfirm && (!column || f.column === column));
+    const fields = [...this.suggestions.values()].filter((f) => f.status === wanted && !f.needsConfirm && !f.needsChoice && (!column || f.column === column));
     if (!fields.length) return;
     const sentences = new Set(fields.map((f) => f.sentIndex)).size;
     const what = column ? column.toUpperCase() : 'the selected columns';

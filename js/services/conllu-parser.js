@@ -260,6 +260,30 @@ export function editComment(overrides, sentence, key, value) {
   pruneOverrides(overrides, sentence.index);
 }
 
+/** Reverts one cell of a token row to the original (drops its override). */
+export function revertCell(overrides, sentence, lineIdx, column) {
+  const ov = overrides[sentence.index];
+  if (ov && ov.cells && ov.cells[lineIdx]) delete ov.cells[lineIdx][column];
+  pruneOverrides(overrides, sentence.index);
+}
+
+/** Reverts one MISC key of a token row to the original. */
+export function revertMiscKey(overrides, sentence, lineIdx, key) {
+  const ov = overrides[sentence.index];
+  if (ov && ov.misc && ov.misc[lineIdx]) delete ov.misc[lineIdx][key];
+  pruneOverrides(overrides, sentence.index);
+}
+
+/** Reverts every cell and MISC key of one token row to the original; other rows keep their edits. */
+export function revertToken(overrides, sentence, lineIdx) {
+  const ov = overrides[sentence.index];
+  if (ov) {
+    if (ov.cells) delete ov.cells[lineIdx];
+    if (ov.misc) delete ov.misc[lineIdx];
+  }
+  pruneOverrides(overrides, sentence.index);
+}
+
 /** Removes every recorded edit of one sentence (revert). */
 export function revertSentence(overrides, sentIndex) {
   delete overrides[sentIndex];
