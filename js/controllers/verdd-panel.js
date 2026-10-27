@@ -598,10 +598,14 @@ export class VerddPanel {
     if (!detail.twins.some(t => t.id === clash.id)) detail.twins.push(clash);
     this.refreshTwins();
     const slot = this.view('browse').querySelector('[data-slot="browse-collision"]');
+    const dropsPos = mergeVerdict(this.entryOf(detail.lexeme), clash, { allowDifferentPos: true }).differentPos;
+    const posNote = dropsPos
+      ? ` The merged entry stays <strong>${esc(clash.pos)}</strong>; this entry's saved part of speech (${esc(detail.lexeme.pos)}) is dropped.`
+      : '';
     slot.innerHTML = `
       <div class="vw-problems">Not saved: entry #${clash.id} is already <strong>${esc(clash.lexeme)}</strong> · ${esc(clash.pos)}${clash.homoId ? ` · homonym ${clash.homoId}` : ''}.
-        Two entries cannot share a headword, POS and homonym number. Merge this entry into #${clash.id}, or give it another homonym number.
-        <button class="btn btn-primary btn-sm" data-action="twin-merge-preview" data-absorbed="${detail.lexeme.id}" data-keeper="${clash.id}">Preview merge into #${clash.id}</button></div>`;
+        Two entries cannot share a headword, POS and homonym number. Merge this entry into #${clash.id}, or give it another homonym number.${posNote}
+        <button class="btn btn-primary btn-sm" data-action="twin-merge-preview" data-absorbed="${detail.lexeme.id}" data-keeper="${clash.id}" data-allow-pos="${dropsPos ? 1 : ''}">Preview merge into #${clash.id}</button></div>`;
     slot.scrollIntoView({ block: 'nearest' });
   }
 
@@ -739,16 +743,17 @@ export class VerddPanel {
     });
   }
 
-  async previewTwinMerge(absorbedId, keeperId) {
+  async previewTwinMerge(absorbedId, keeperId, allowDifferentPos = false) {
     const detail = this.browse.detail;
     const entries = new Map([[detail.lexeme.id, this.entryOf(detail.lexeme)], ...detail.twins.map(t => [t.id, t])]);
     const [absorbed, keeper] = [entries.get(absorbedId), entries.get(keeperId)];
     if (!absorbed || !keeper) return;
-    const verdict = mergeVerdict(absorbed, keeper);
+    const verdict = mergeVerdict(absorbed, keeper, { allowDifferentPos });
     if (!verdict.ok) return this.showToast(verdict.reason, 'error');
     await this.guard(async () => {
-      const report = await this.api.mergeLexeme(absorbedId, keeperId, { dryRun: true, allowDifferentHeadword: verdict.differentHeadword });
-      detail.mergePreview = { absorbedId, keeperId, differentHeadword: verdict.differentHeadword, report };
+      const options = { allowDifferentHeadword: verdict.differentHeadword, allowDifferentPos: verdict.differentPos };
+      const report = await this.api.mergeLexeme(absorbedId, keeperId, { dryRun: true, ...options });
+      detail.mergePreview = { absorbedId, keeperId, ...options, report };
       const slot = this.view('browse').querySelector('[data-slot="browse-merge"]');
       slot.innerHTML = `
         <div class="vw-merge-detail">
@@ -773,16 +778,22 @@ export class VerddPanel {
     const detail = this.browse.detail;
     const preview = detail?.mergePreview;
     if (!preview) return;
-    const { absorbedId, keeperId, differentHeadword, report } = preview;
+    const { absorbedId, keeperId, allowDifferentHeadword, allowDifferentPos, report } = preview;
     const lines = describeMerge(report).join('\n');
-    const headwords = differentHeadword ? `\nThe headwords differ: "${report.absorbed.lexeme}" and "${report.into.lexeme}".\n` : '';
-    if (!this.confirmAction(`Join #${absorbedId} into #${keeperId}? #${absorbedId} is deleted afterwards.${headwords}\n${lines}`)) return;
+    const headwords = allowDifferentHeadword ? `\nThe headwords differ: "${report.absorbed.lexeme}" and "${report.into.lexeme}".\n` : '';
+    // A note typed into the form but not saved would vanish with the absorbed entry.
+    const typed = absorbedId === detail.lexeme.id ? this.detailValues('[data-edit]', 'data-edit').notes?.trim() : '';
+    const carryNotes = typed && typed !== (detail.lexeme.notes || '') ? typed : '';
+    const notesLine = carryNotes ? `\nYour notes "${carryNotes}" are added to the kept entry if it has none.\n` : '';
+    if (!this.confirmAction(`Join #${absorbedId} into #${keeperId}? #${absorbedId} is deleted afterwards.${headwords}${notesLine}\n${lines}`)) return;
     await this.guard(async () => {
-      await this.api.mergeLexeme(absorbedId, keeperId, { allowDifferentHeadword: differentHeadword });
+      if (carryNotes) await this.api.updateLexeme(absorbedId, { notes: carryNotes }); // the merge copies it when the kept entry has none
+      const done = await this.api.mergeLexeme(absorbedId, keeperId, { allowDifferentHeadword, allowDifferentPos });
       this.browse.results = this.browse.results.filter(l => l.id !== absorbedId);
       this.browse.total = Math.max(0, this.browse.total - 1);
       this.showToast(`Joined #${absorbedId} into #${keeperId}.`, 'success');
-      await this.openLexeme(keeperId, { text: `Joined #${absorbedId} into this entry.` });
+      const kept = (done.notes || []).filter(n => n.startsWith('notes:')).join(' ');
+      await this.openLexeme(keeperId, { text: `Joined #${absorbedId} into this entry.${kept ? ` ${kept}` : ''}` });
     });
   }
 
@@ -1091,7 +1102,7 @@ export class VerddPanel {
       'save-lexeme': () => this.saveLexeme(),
       'use-tidy': () => { this.view('browse').querySelector('[data-edit="lexeme"]').value = el.dataset.value; },
       'twin-add': () => this.addTwin(),
-      'twin-merge-preview': () => this.previewTwinMerge(Number(el.dataset.absorbed), Number(el.dataset.keeper)),
+      'twin-merge-preview': () => this.previewTwinMerge(Number(el.dataset.absorbed), Number(el.dataset.keeper), el.dataset.allowPos === '1'),
       'twin-merge-do': () => this.performTwinMerge(),
       'twin-merge-cancel': () => { this.view('browse').querySelector('[data-slot="browse-merge"]').innerHTML = ''; },
       'split-preview': () => this.previewSplit(),
