@@ -231,11 +231,13 @@ export class VerddApi {
 
   /**
    * Absorb one entry into another. dryRun previews without changing anything; entries whose
-   * headwords differ are only joined with allowDifferentHeadword.
+   * headwords or parts of speech differ are only joined with allowDifferentHeadword and
+   * allowDifferentPos (the absorbed entry's value is then dropped, the kept entry's stays).
    */
-  mergeLexeme(absorbedId, keeperId, { dryRun = false, allowDifferentHeadword = false } = {}) {
+  mergeLexeme(absorbedId, keeperId, { dryRun = false, allowDifferentHeadword = false, allowDifferentPos = false } = {}) {
     const body = { into: keeperId, dry_run: dryRun };
     if (allowDifferentHeadword) body.allow_different_headword = true;
+    if (allowDifferentPos) body.allow_different_pos = true;
     return this.request('POST', `/lexemes/${absorbedId}/merge/`, { body });
   }
 
@@ -307,6 +309,7 @@ export function describeMerge(report) {
   each('deduplicated', (what) => `Folds ${what} into what the kept entry already has.`);
   each('dropped', (what) => `Drops ${what} (they would point an entry at itself).`);
   if (report.headword_dropped) lines.push(`The headword "${report.headword_dropped}" is dropped; the kept entry keeps its own.`);
+  if (report.pos_dropped) lines.push(`The part of speech ${report.pos_dropped} of the absorbed entry is dropped; the kept entry stays ${report.into?.pos}.`);
   if (report.pos_set) lines.push(`The kept entry has no part of speech yet, so it becomes ${report.pos_set}.`);
   if (report.fields_copied?.length) lines.push(`Fills the kept entry's empty ${report.fields_copied.join(', ')}.`);
   (report.notes || []).forEach(note => lines.push(note));
@@ -355,16 +358,19 @@ export function tidyHeadword(text) {
 
 /**
  * The browser-side mirror of the server's merge rules, used to explain why two entries
- * cannot be joined before asking the server. `differentHeadword` means the join needs the
- * user's explicit confirmation.
+ * cannot be joined before asking the server. `differentHeadword` and `differentPos` mean the
+ * join needs the user's explicit confirmation; different parts of speech are only accepted
+ * with `allowDifferentPos`, which the panel sets once the user has chosen the other
+ * entry's POS for this one.
  */
-export function mergeVerdict(absorbed, keeper) {
+export function mergeVerdict(absorbed, keeper, { allowDifferentPos = false } = {}) {
   if (absorbed.id === keeper.id) return { ok: false, reason: 'An entry cannot be merged into itself.' };
   if (absorbed.language !== keeper.language) return { ok: false, reason: 'Only entries of the same language can be merged.' };
-  if (!isUndetermined(absorbed.pos) && !isUndetermined(keeper.pos) && absorbed.pos !== keeper.pos) {
-    return { ok: false, reason: `They have different parts of speech (${absorbed.pos} and ${keeper.pos}), so they are different entries. Change the part of speech of one first.` };
+  const differentPos = !isUndetermined(absorbed.pos) && !isUndetermined(keeper.pos) && absorbed.pos !== keeper.pos;
+  if (differentPos && !allowDifferentPos) {
+    return { ok: false, reason: `They have different parts of speech (${absorbed.pos} and ${keeper.pos}), so they may be different entries. If one has the wrong part of speech, set it to match the other and press Save entry; you will then be offered the merge.` };
   }
-  return { ok: true, differentHeadword: absorbed.lexeme !== keeper.lexeme, takesPos: isUndetermined(keeper.pos) && !isUndetermined(absorbed.pos) };
+  return { ok: true, differentHeadword: absorbed.lexeme !== keeper.lexeme, differentPos, takesPos: isUndetermined(keeper.pos) && !isUndetermined(absorbed.pos) };
 }
 
 async function describeLexemes(api, lexemes) {
