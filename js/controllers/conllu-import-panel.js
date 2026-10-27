@@ -51,6 +51,8 @@ export class ConlluImportPanel {
     this.editing = new Set(); // `${sentIndex}:${lineIdx}` of the tokens whose editor is open
     this.featDraft = new Map(); // `${sentIndex}:${lineIdx}` -> feature picked in the add control (to offer its values)
     this.focusLine = null; // line index of the token the user is working on (highlighted, scrolled into view)
+    this.xposStyle = 'short'; // what XPOS receives from a reading: 'short' POS tag or the 'full' analyzer tag string
+    this.analyzerInfo = null; // which analyzer build produced the readings (name, origin)
     this.inventoryLang = 'auto'; // 'auto' = language of the text, 'none' = only what this file uses, or an inventory language code
     this.suggestions = new Map(); // `${sentIndex}:${lineIdx}:${column}` -> proposal (with .checked, .pick)
     this.fileSummary = null; // counts after a whole-file suggestion run
@@ -70,6 +72,7 @@ export class ConlluImportPanel {
   refreshDefaults() {
     if (!this.srcLang) this.srcLang = this.getSrcLang() || 'apu';
     this.render();
+    this._refreshAnalyzerInfo();
   }
 
   // ---- rendering -------------------------------------------------------------------------
@@ -161,6 +164,8 @@ export class ConlluImportPanel {
         <button class="btn btn-secondary" data-action="download-original" title="The file exactly as imported">⬇ Original</button>
         <label class="ci-inline ci-grow" title="Off by default: the exported file then holds exactly your edits and nothing else"><input type="checkbox" data-role="export-uncertainty" ${this.service.exportOptions(this.currentId).recordUncertainty ? 'checked' : ''}>
           also record uncertain lemmas in MISC (<code>LemmaStatus=</code>, <code>AltLemma=</code>) — optional, off by default</label>
+        <label class="ci-inline ci-grow" title="Off by default. Written only for tokens whose values were applied from the reading you chose."><input type="checkbox" data-role="export-analysis" ${this.service.exportOptions(this.currentId).recordAnalysis ? 'checked' : ''}>
+          also record the chosen analysis in MISC (<code>Analysis=…</code>) — optional, off by default</label>
       </div>`;
   }
 
@@ -172,10 +177,33 @@ export class ConlluImportPanel {
     const mapping = this.showMapping ? `<table class="dict-table ci-mapping"><thead><tr><th>Gloss abbreviation</th><th>Becomes in FEATS</th></tr></thead>
       <tbody>${describeGlossMapping().map((r) => `<tr><td><code>${esc(r.abbreviation)}</code></td><td>${esc(r.features)}</td></tr>`).join('')}</tbody></table>
       <p class="vw-hint">Analyzer tags use the same feature names (tag-mapper). Existing FEATS values are never changed, only missing features are added; every proposal is shown before it is applied.</p>` : '';
-    return `${this.renderInventoryControl()}<div class="ci-columns"><b>Columns to enhance:</b> ${locked} ${boxes}
+    return `${this.renderInventoryControl()}${this.renderAnalyzerLine()}<div class="ci-columns"><b>Columns to enhance:</b> ${locked} ${boxes}
       <a href="#" data-action="toggle-mapping">${this.showMapping ? 'hide' : 'show'} FEATS mapping</a></div>
       <p class="vw-hint">Empty cells (<code>_</code>) are filled when you click Apply. A cell that already has a value is only changed if you tick it yourself and confirm.
       ${[...this.columns].filter((c) => c === 'deps').length ? ' DEPS has no source, so nothing is proposed for it.' : ''}</p>${mapping}`;
+  }
+
+  /** Which analyzer build the readings come from, and what XPOS receives from a chosen reading. */
+  renderAnalyzerLine() {
+    const a = this.analyzerInfo;
+    const text = a
+      ? `Analyzer for <b>${esc(a.lang)}</b>: <b>${esc(a.name)}</b> <span class="ci-muted">(${esc(a.origin)}${a.savedAt ? `, saved ${esc(new Date(a.savedAt).toLocaleString())}` : ''})</span>`
+      : 'No analyzer model for this language is loaded: LEMMA, UPOS, XPOS and FEATS cannot be proposed from the analyzer.';
+    return `<p class="vw-hint ci-analyzer">${text}
+      <label class="ci-inline" title="What the XPOS cell receives when a reading is used. A non-empty XPOS is never replaced without your confirmation.">XPOS gets
+        <select data-role="xpos-style"><option value="short"${this.xposStyle === 'short' ? ' selected' : ''}>the short POS tag (N)</option>
+          <option value="full"${this.xposStyle === 'full' ? ' selected' : ''}>the full analyzer tag string</option></select></label></p>`;
+  }
+
+  async _refreshAnalyzerInfo() {
+    const lang = this.srcLang || this.getSrcLang() || 'apu';
+    try {
+      await this.service.prepareLanguage(lang);
+      this.analyzerInfo = await this.service.analyzerInfo(lang);
+    } catch (e) {
+      this.analyzerInfo = null;
+    }
+    this.render();
   }
 
   renderInventoryControl() {
@@ -259,7 +287,9 @@ export class ConlluImportPanel {
     const readingOf = new Map(); // lineIdx -> { reading, needsChoice }
     for (const f of fields) if (f.reading && (f.reading.alternatives || f.reading.choice) && !readingOf.has(f.lineIdx)) readingOf.set(f.lineIdx, f);
     const overrides = this.service.overrides(this.currentId)[sent.index];
-    const shown = ENHANCE_COLUMNS.filter((c) => this.columns.has(c));
+    const needsReading = ['lemma', 'upos', 'xpos', 'feats'].some((c) => this.columns.has(c));
+    // the XPOS cell hosts the reading dropdown, so it is shown whenever an analyzer-based column is selected
+    const shown = ENHANCE_COLUMNS.filter((c) => this.columns.has(c) || (c === 'xpos' && needsReading));
     const showLemma = !this.columns.has('lemma');
     const width = 2 + (showLemma ? 1 : 0) + shown.length;
 
@@ -281,9 +311,10 @@ export class ConlluImportPanel {
           : Boolean(overrides && overrides.cells && overrides.cells[lineIdx] && overrides.cells[lineIdx][c]);
         let current = now[COLUMN_INDEX[c]];
         if (c === 'misc') current = current.split('|').filter((x) => /^gloss[[_]/i.test(x)).join(' ') || '—';
-        return `<td class="${changed ? 'ci-changed' : ''}"><div class="ci-old"><code>${breakable(current)}</code></div>${f ? this.renderProposal(f) : ''}</td>`;
+        const select = c === 'xpos' && readingOf.has(lineIdx) ? this.renderReadingSelect(sent.index, lineIdx, readingOf.get(lineIdx)) : '';
+        return `<td class="${changed ? 'ci-changed' : ''}"><div class="ci-old"><code>${breakable(current)}</code></div>${select}${f ? this.renderProposal(f) : ''}</td>`;
       }).join('');
-      const picker = readingOf.has(lineIdx) ? `<tr class="ci-readings"><td colspan="${width}">${this.renderReadingPicker(sent.index, lineIdx, cols[1], readingOf.get(lineIdx))}</td></tr>` : '';
+      const picker = '';
       const focus = lineIdx === this.focusLine ? ' class="ci-focus"' : '';
       const open = this.editing.has(`${sent.index}:${lineIdx}`);
       const editedHere = this.service.editedFields(this.currentId, sent.index, lineIdx);
@@ -340,31 +371,32 @@ export class ConlluImportPanel {
   }
 
   /**
-   * The readings of a token, looked up by its FORM (the form is primary; the file's lemma is only a hypothesis).
-   * Every analyzer reading is listed with its lemma, marked when it equals or differs from what the file says and
-   * whether it is in the default proposal. The default (features all default readings share) is pre-selected;
-   * picking a reading makes it supply LEMMA, UPOS, XPOS and FEATS together.
+   * The dropdown in the XPOS cell: the analyzer's readings of the FORM by their tag strings (as emitted), plain
+   * readings (no Der, no Cmp) first and derived or compound ones in a second group. Picking one makes that single
+   * reading supply LEMMA, UPOS, XPOS and FEATS; the default (features the plain readings share) is only a
+   * pre-selection and an explicit choice always wins and is kept.
    */
-  renderReadingPicker(sentIndex, lineIdx, form, f) {
+  renderReadingSelect(sentIndex, lineIdx, f) {
     const r = f.reading;
-    const fileLemma = this.service.parsed(this.currentId).sentences[sentIndex].lines[lineIdx].cols[2];
-    const nowLemma = this.service.workingCols(this.currentId, sentIndex, lineIdx)[2];
-    const name = `rd-${sentIndex}-${lineIdx}`;
     const data = `data-role="reading-pick" data-sent="${sentIndex}" data-line="${lineIdx}"`;
-    const option = (c) => `<label class="ci-rd"><input type="radio" name="${name}" ${data} value="${esc(c.raw)}"${r.choice === c.raw ? ' checked' : ''}>
-      <span><code>${esc(c.raw)}</code><br>lemma <b>${esc(c.lemma)}</b> ${c.matchesFileLemma ? '<span class="ci-fill">= current lemma</span>' : '<span class="ci-muted">≠ current lemma</span>'}
-        · UPOS <b>${esc(c.upos)}</b> · XPOS <b>${esc(c.xpos || '—')}</b> · FEATS <code>${breakable(c.feats)}</code>
-        ${c.inDefault ? '<span class="ci-muted">(in default)</span>' : '<span class="ci-muted">(not in default)</span>'}${c.derived ? ' <span class="ci-muted">(derived)</span>' : ''}</span>
-      <button class="btn btn-secondary btn-sm ci-keepalt" data-action="alt-add" data-sent="${sentIndex}" data-line="${lineIdx}" data-lemma="${esc(c.lemma)}" title="Remember this lemma as an alternative without choosing it">keep lemma as alternative</button></label>`;
-    const status = r.choice ? `<span class="ci-fill">chosen by you</span> <a href="#" data-action="reading-reset" data-sent="${sentIndex}" data-line="${lineIdx}">reset to default</a>`
-      : (r.ambiguous ? '<span class="ci-warn"><b>needs your choice</b></span>' : '<span class="ci-muted">default is clear; other readings exist</span>');
     const nDefault = r.candidates.filter((c) => c.inDefault).length;
-    const sorted = [...r.candidates].sort((a, b) => Number(b.inDefault) - Number(a.inDefault) || Number(b.matchesFileLemma) - Number(a.matchesFileLemma));
-    return `<details class="ci-rd-box"${r.ambiguous || r.choice ? ' open' : ''}><summary class="ci-rd-head">Form <b class="ci-form">${esc(form)}</b> · file says lemma <code>${esc(fileLemma)}</code>${nowLemma !== fileLemma ? ` · now <code>${esc(nowLemma)}</code>` : ''} · ${r.candidates.length} reading${r.candidates.length > 1 ? 's' : ''}: ${status}</summary>
-      <label class="ci-rd"><input type="radio" name="${name}" ${data} value=""${r.choice ? '' : ' checked'}>
-        <span><b>Default: shared features of the ${nDefault} reading${nDefault > 1 ? 's' : ''} marked "in default"</b> <span class="ci-muted">(chosen by ${esc(r.defaultReason || 'all readings')}; LEMMA, UPOS and XPOS from the first)</span><br>FEATS <code>${breakable(r.sharedFeats)}</code></span></label>
-      ${sorted.map(option).join('')}
-      ${this.renderLemmaNote(sentIndex, lineIdx)}</details>`;
+    const label = (c) => `${c.tagString} · ${c.lemma} · ${c.upos} · ${c.feats}`;
+    const option = (c) => `<option value="${esc(c.raw)}"${r.choice === c.raw ? ' selected' : ''} title="${esc(c.raw)}">${esc(label(c))}${c.inDefault ? '  ✓ default' : ''}</option>`;
+    const plain = r.candidates.filter((c) => c.group === 'plain');
+    const other = r.candidates.filter((c) => c.group === 'other');
+    const defaultText = `Default: shared features of ${nDefault} reading${nDefault > 1 ? 's' : ''}${r.ambiguous ? ' — needs your choice' : ''}`;
+    const sel = r.choice ? r.candidates.find((c) => c.raw === r.choice) : null;
+    const status = sel
+      ? `<span class="ci-fill">chosen by you</span> <a href="#" data-action="reading-reset" data-sent="${sentIndex}" data-line="${lineIdx}">reset to default</a>`
+      : (r.ambiguous ? '<span class="ci-warn"><b>needs your choice</b></span>' : '<span class="ci-muted">default is clear; other readings exist</span>');
+    const detail = sel
+      ? `lemma <b>${esc(sel.lemma)}</b> · UPOS <b>${esc(sel.upos)}</b> · XPOS <b>${esc(this.xposStyle === 'full' ? sel.tagString : (sel.xpos || '—'))}</b> · FEATS <code>${breakable(sel.feats)}</code>`
+      : `FEATS <code>${breakable(r.sharedFeats)}</code> <span class="ci-muted">(${esc(r.defaultReason || 'all readings')})</span>`;
+    return `<div class="ci-xpos-pick" title="Readings of the form, by the analyzer's tags. The word form is primary; the lemma is a hypothesis.">
+      <select ${data}><option value=""${r.choice ? '' : ' selected'}>${esc(defaultText)}</option>
+        <optgroup label="Plain readings (no Der, no Cmp)">${plain.map(option).join('')}</optgroup>
+        ${other.length ? `<optgroup label="Derived or compound readings">${other.map(option).join('')}</optgroup>` : ''}</select>
+      <div class="ci-note">${status}<br>${detail}</div></div>`;
   }
 
   /** Hand-editing of one token: FEATS chips, UPOS / DEPREL / LEMMA / XPOS / HEAD / DEPS fields, MISC chips; ID and FORM are locked. */
@@ -414,12 +446,20 @@ export class ConlluImportPanel {
     return `<div class="ci-ed"><div class="ci-ed-head"><b>${esc(orig[1])}</b> (ID ${esc(orig[0])}) <span class="ci-muted">ID and FORM are locked. Everything below is written to the working copy at once; the original file is never touched, and each edit can be taken back.</span>
         ${anyEdit ? `<button class="btn btn-secondary btn-sm" data-action="revert-token" ${data}>↩ Revert this token to the original</button>` : ''}</div>
       <div class="ci-ed-grid">${field('lemma')}${field('upos', 'ci-dl-upos')}${field('xpos')}${field('head')}${field('deprel', 'ci-dl-deprel')}${field('deps')}</div>
-      <div class="ci-ed-block"><b>Lemma</b> <span class="ci-muted">(the form is primary; the lemma is your hypothesis. File says: <code>${esc(orig[2])}</code>)</span>${this.renderLemmaNote(sentIndex, lineIdx)}</div>
+      <div class="ci-ed-block"><b>Lemma</b> <span class="ci-muted">(the form is primary; the lemma is your hypothesis. File says: <code>${esc(orig[2])}</code>)</span>${this._analyzerLemmas(sentIndex, lineIdx, data)}${this.renderLemmaNote(sentIndex, lineIdx)}</div>
       <div class="ci-ed-block"><b>FEATS</b> <span class="ci-muted">${esc(prov.feats ? this._prov(prov.feats) : (edited.cells.includes('feats') ? 'edited' : 'original'))}</span>${edited.cells.includes('feats') ? ` · <a href="#" data-action="revert-cell" ${data} data-col="feats" title="Original: ${esc(orig[5])}">↩ back to ${esc(orig[5])}</a>` : ''}
         <div class="ci-chips">${chips}</div>${featAdd}</div>
       <div class="ci-ed-block"><b>MISC</b>${edited.misc.length ? ` <span class="ci-muted">edited keys:</span> ${edited.misc.map((k) => `<a href="#" data-action="revert-misc" ${data} data-key="${esc(k)}" title="Take this key back to the original">↩ ${esc(k)}</a>`).join(' · ')}` : ''}
         <div class="ci-chips">${miscChips}</div>${miscAdd}</div>
       <datalist id="ci-dl-upos">${this._labelOptions('upos', opts)}</datalist><datalist id="ci-dl-deprel">${this._labelOptions('deprel', opts)}</datalist></div>`;
+  }
+
+  /** Lemmas the analyzer offers for this token (from the current proposals), each one click away from "alternative". */
+  _analyzerLemmas(sentIndex, lineIdx, data) {
+    const f = [...this.suggestions.values()].find((x) => x.sentIndex === sentIndex && x.lineIdx === lineIdx && x.reading);
+    if (!f) return '';
+    const lemmas = [...new Set(f.reading.candidates.map((c) => c.lemma))];
+    return `<div class="ci-lemma-note"><span class="ci-muted">analyzer lemmas:</span> ${lemmas.map((l) => `<button class="btn btn-secondary btn-sm" data-action="alt-add" ${data} data-lemma="${esc(l)}" title="Remember ${esc(l)} as an alternative without choosing it">+ ${esc(l)}</button>`).join(' ')}</div>`;
   }
 
   _labelOptions(kind, opts) {
@@ -525,6 +565,7 @@ export class ConlluImportPanel {
       } else if (role === 'src-lang') {
         this.srcLang = el.value.trim().toLowerCase();
         this.srcLangTouched = true;
+        this._refreshAnalyzerInfo();
         this.suggestions.clear();
         this.fileSummary = null;
       } else if (role === 'gloss-lang') {
@@ -542,6 +583,14 @@ export class ConlluImportPanel {
       } else if (role === 'lemma-status') {
         await this.service.setLemmaStatus(this.currentId, Number(el.dataset.sent), Number(el.dataset.line), el.value || null);
         this.render();
+      } else if (role === 'xpos-style') {
+        this.xposStyle = el.value;
+        this.suggestions.clear();
+        this.fileSummary = null;
+        this.render();
+      } else if (role === 'export-analysis') {
+        await this.service.setExportOption(this.currentId, 'recordAnalysis', el.checked);
+        this.showToast(el.checked ? 'Tokens whose values come from a reading you chose will carry Analysis=… in the exported file.' : 'The chosen analysis is not written to the exported file.', 'info');
       } else if (role === 'export-uncertainty') {
         await this.service.setExportOption(this.currentId, 'recordUncertainty', el.checked);
         this.showToast(el.checked ? 'The exported file will also carry LemmaStatus= and AltLemma= in MISC for tokens you marked.' : 'Uncertain lemmas are not written to the exported file.', 'info');
@@ -598,6 +647,7 @@ export class ConlluImportPanel {
     this.fileSummary = null;
     this.glossLang = '';
     this.render();
+    this._refreshAnalyzerInfo();
     const s = res.summary;
     if (res.duplicate) {
       this.showToast(`"${file.name}" was already imported (same content); opened the existing copy with its edits.`, 'info');
@@ -619,7 +669,7 @@ export class ConlluImportPanel {
   }
 
   _options() {
-    return { srcLang: this.srcLang || this.getSrcLang() || 'apu', tgtLang: this.glossLang || undefined, columns: [...this.columns], inventoryLang: this.inventoryLang };
+    return { srcLang: this.srcLang || this.getSrcLang() || 'apu', tgtLang: this.glossLang || undefined, columns: [...this.columns], inventoryLang: this.inventoryLang, xposStyle: this.xposStyle };
   }
 
   _remember(list) {
@@ -637,7 +687,8 @@ export class ConlluImportPanel {
   async _prepare() {
     const needs = ['lemma', 'upos', 'xpos', 'feats'].some((c) => this.columns.has(c));
     const lang = this.srcLang || this.getSrcLang() || 'apu';
-    if (!needs || await this.service.prepareLanguage(lang)) return;
+    if (needs && await this.service.prepareLanguage(lang)) { this.analyzerInfo = await this.service.analyzerInfo(lang); return; }
+    if (!needs) return;
     this.showToast(`No analyzer model for "${lang}" is available here: LEMMA, UPOS, XPOS and FEATS are proposed from glosses only. Check the language of the text, or load the model in the workbench.`, 'info');
   }
 

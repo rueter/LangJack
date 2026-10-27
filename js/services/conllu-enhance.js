@@ -173,31 +173,59 @@ export function describeGlossMapping() {
 // Analyzer readings
 // ---------------------------------------------------------------------------------------
 
-const DERIVED = /\+Der(\/|\+|$)/;
+/**
+ * The tags of an analyzer reading, in the order the analyzer emitted them (lemma stem not included).
+ * Uses the reading's own tag list when it has one, otherwise splits the raw analysis string.
+ */
+export function readingTags(r) {
+  if (Array.isArray(r.cleanTags)) return r.cleanTags;
+  const clean = stripGuessTags(r.raw || '');
+  const sections = clean.includes('#') ? clean.split('#').filter(Boolean) : [clean];
+  return sections.flatMap((sec) => sec.split('+').filter(Boolean).slice(1));
+}
+
+/** Derivation (Der, Der/...) anywhere among the tags, whatever their order. */
+export const isDerivedReading = (r) => readingTags(r).some((t) => t === 'Der' || t.startsWith('Der/'));
+/** Compounding (Cmp, Cmp/..., or a # boundary) anywhere in the analysis. */
+export const isCompoundReading = (r) => readingTags(r).some((t) => t === 'Cmp' || t.startsWith('Cmp/')) || /#/.test(r.raw || '');
+
+/** Identity of a reading independent of tag order: lemma plus the SET of tags. */
+export const readingKey = (r) => `${stripGuessTags(r.lemma || '')}\u0000${[...new Set(readingTags(r))].sort().join('+')}`;
 
 /**
  * What the analyzer says about a token, looked up by its FORM. The word form is primary: the file's LEMMA is a
- * hypothesis, never a filter. Every reading stays a candidate (`candidates`, each marked with whether its lemma
- * equals the file's and whether it is part of the default proposal). The default proposal uses a visible tie-breaker
- * to pick its pool (`defaultReason`): readings with the file's lemma, else plain readings over derived ones (+Der...),
- * then the file's UPOS. When that pool has several readings the default uses only the features they share and the
- * token is `ambiguous`. The user can pick any reading (`choice` = its raw analysis string); it then supplies LEMMA,
- * UPOS, XPOS and FEATS together.
+ * hypothesis, never a filter. Every reading stays a candidate (`candidates`, in two groups: plain readings first, then
+ * derived and compound ones). Readings that differ only in tag order are one reading (same lemma and tag set); its tags
+ * are shown as the analyzer emitted them. Nothing here depends on the position of a tag.
+ *
+ * The default proposal comes from the plain readings (no Der, no Cmp), or from all readings when there are none; the
+ * file's lemma and UPOS then only narrow that pool (stated in `defaultReason`). With several readings left the default
+ * uses only what they share and the token is `ambiguous` ("needs your choice"). The user can pick any reading
+ * (`choice` = its raw analysis string); LEMMA, UPOS, XPOS and FEATS then all come from that one reading, not intersected.
  * @param {Array<Object>} readings  analyzer readings
  * @param {{ lemma: string, upos: string }} row  the file's current values (hypotheses)
  * @param {string|null} [choice]  raw analysis of the reading the user picked; null = default rule
- * @returns {null|{ lemma: string, upos: string, xpos: string, feats: Map<string,string>, readings: number,
+ * @returns {null|{ lemma: string, upos: string, xpos: string, tagString: string, feats: Map<string,string>, readings: number,
  *   ambiguous: boolean, alternatives: boolean, choice: string|null, choiceStale: boolean, shared: Map<string,string>,
+ *   agree: { lemma: boolean, upos: boolean, xpos: boolean, tagString: boolean },
  *   defaultReason: string, candidates: Array<Object> }}
  */
 export function summarizeReadings(readings, row, choice = null) {
-  const usable = (readings || []).filter((r) => r && !r.isGuessed && r.lemma);
+  const seen = new Set();
+  const usable = [];
+  for (const r of readings || []) {
+    if (!r || r.isGuessed || !r.lemma) continue;
+    const key = readingKey(r);
+    if (seen.has(key)) continue; // the same reading in another tag order
+    seen.add(key);
+    usable.push(r);
+  }
   if (!usable.length) return null;
-  const sameLemma = usable.filter((r) => stripGuessTags(r.lemma) === row.lemma);
-  // With no lemma to go by, a plain reading beats a derived one (+Der...), which would otherwise
-  // drag the features they do not share out of the proposal.
-  const plain = usable.filter((r) => !DERIVED.test(r.raw || ''));
-  const pool = sameLemma.length ? sameLemma : (plain.length ? plain : usable);
+
+  const plainGroup = usable.filter((r) => !isDerivedReading(r) && !isCompoundReading(r));
+  const base = plainGroup.length ? plainGroup : usable;
+  const sameLemma = base.filter((r) => stripGuessTags(r.lemma) === row.lemma);
+  const pool = sameLemma.length ? sameLemma : base;
   const sameUpos = pool.filter((r) => r.upos === row.upos);
   const chosen = sameUpos.length ? sameUpos : pool;
   const first = chosen[0];
@@ -208,27 +236,42 @@ export function summarizeReadings(readings, row, choice = null) {
     else for (const [k, v] of [...shared]) if (own.get(k) !== v) shared.delete(k);
   }
   const reasons = [];
-  if (sameLemma.length) reasons.push("readings with the file's lemma");
-  else if (plain.length && plain.length < usable.length) reasons.push('plain readings over derived ones');
+  if (plainGroup.length && plainGroup.length < usable.length) reasons.push('plain readings (no Der/Cmp)');
+  if (sameLemma.length && sameLemma.length < base.length) reasons.push("the file's lemma");
   if (sameUpos.length && sameUpos.length < pool.length) reasons.push("the file's UPOS");
-  const describe = (r) => ({
-    raw: r.raw || '', lemma: stripGuessTags(r.lemma), upos: r.upos, xpos: r.pos || '',
-    feats: featsToString(new Map(Object.entries(r.featsMap || {}))), derived: DERIVED.test(r.raw || ''),
-    matchesFileLemma: stripGuessTags(r.lemma) === row.lemma, inDefault: chosen.includes(r)
-  });
+
+  const describe = (r) => {
+    const derived = isDerivedReading(r);
+    const compound = isCompoundReading(r);
+    return {
+      raw: r.raw || '', lemma: stripGuessTags(r.lemma), upos: r.upos, xpos: r.pos || '', tagString: readingTags(r).join('+'),
+      feats: featsToString(new Map(Object.entries(r.featsMap || {}))), derived, compound,
+      kind: derived && compound ? 'derived+compound' : derived ? 'derived' : compound ? 'compound' : 'plain',
+      group: derived || compound ? 'other' : 'plain',
+      matchesFileLemma: stripGuessTags(r.lemma) === row.lemma, inDefault: chosen.includes(r)
+    };
+  };
+  // plain readings first, then derived and compound ones; the analyzer's own order inside each group
+  const candidates = usable.map(describe).sort((a, b) => (a.group === b.group ? 0 : a.group === 'plain' ? -1 : 1));
+  const same = (get) => chosen.every((r) => get(r) === get(first));
   const common = {
-    ambiguous: chosen.length > 1, alternatives: usable.length > 1, shared: shared || new Map(),
-    defaultReason: reasons.join(' and '), candidates: usable.map(describe)
+    ambiguous: chosen.length > 1, alternatives: usable.length > 1, shared: shared || new Map(), candidates,
+    defaultReason: reasons.join(' and '),
+    agree: {
+      lemma: same((r) => stripGuessTags(r.lemma)), upos: same((r) => r.upos), xpos: same((r) => r.pos || ''),
+      tagString: same((r) => [...new Set(readingTags(r))].sort().join('+'))
+    }
   };
   const picked = choice ? usable.find((r) => r.raw === choice) : null;
   if (picked) {
     return {
-      lemma: stripGuessTags(picked.lemma), upos: picked.upos, xpos: picked.pos || '',
-      feats: new Map(Object.entries(picked.featsMap || {})), readings: 1, choice: picked.raw, choiceStale: false, ...common
+      lemma: stripGuessTags(picked.lemma), upos: picked.upos, xpos: picked.pos || '', tagString: readingTags(picked).join('+'),
+      feats: new Map(Object.entries(picked.featsMap || {})), readings: 1, choice: picked.raw, choiceStale: false, ...common,
+      agree: { lemma: true, upos: true, xpos: true, tagString: true }
     };
   }
   return {
-    lemma: stripGuessTags(first.lemma), upos: first.upos, xpos: first.pos || '',
+    lemma: stripGuessTags(first.lemma), upos: first.upos, xpos: first.pos || '', tagString: readingTags(first).join('+'),
     feats: common.shared, readings: chosen.length, choice: null, choiceStale: Boolean(choice), ...common
   };
 }

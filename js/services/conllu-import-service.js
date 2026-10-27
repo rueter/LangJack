@@ -90,7 +90,7 @@ export class ConlluImportService {
       readingChoices: (working && working.readingChoices) || {}, // { sentIndex: { lineIdx: raw analysis } }: which reading the user picked
       provenance: (working && working.provenance) || {}, // { sentIndex: { lineIdx: { 'lemma' | 'feats' | 'feats:Key' | 'misc:Key': { source, detail, at } } } }
       tokenNotes: (working && working.tokenNotes) || {}, // { sentIndex: { lineIdx: { lemmaStatus, alternatives: [lemma] } } }
-      exportOptions: { recordUncertainty: false, ...((working && working.exportOptions) || {}) },
+      exportOptions: { recordUncertainty: false, recordAnalysis: false, ...((working && working.exportOptions) || {}) },
       exportName: (working && working.exportName) || defaultExportFileName(original.fileName)
     };
     this.items.set(original.importId, item);
@@ -287,7 +287,7 @@ export class ConlluImportService {
   /** The working file as CoNLL-U text. Untouched sentences are byte-identical to the original. */
   exportText(importId) {
     const it = this._item(importId);
-    return serializeConllu(it.parsed, it.exportOptions.recordUncertainty ? this._overridesWithNotes(it) : it.overrides);
+    return serializeConllu(it.parsed, it.exportOptions.recordUncertainty || it.exportOptions.recordAnalysis ? this._overridesWithNotes(it) : it.overrides);
   }
 
   /** The unchanged original text, exactly as imported. */
@@ -590,21 +590,38 @@ export class ConlluImportService {
 
   exportOptions(importId) { return { ...this._item(importId).exportOptions }; }
 
-  /** recordUncertainty: also write LemmaStatus=… and AltLemma=… into MISC of the exported file (off by default). */
+  /**
+   * Optional extras for the exported file, both off by default:
+   * recordUncertainty: LemmaStatus=… and AltLemma=… in MISC for tokens you marked;
+   * recordAnalysis: Analysis=<the analyzer reading you chose> in MISC for tokens whose values come from that reading.
+   */
   async setExportOption(importId, key, value) {
     const it = this._item(importId);
-    if (key !== 'recordUncertainty') throw new ManualEditError('INVALID', `Unknown export option "${key}"`);
-    it.exportOptions.recordUncertainty = Boolean(value);
+    if (key !== 'recordUncertainty' && key !== 'recordAnalysis') throw new ManualEditError('INVALID', `Unknown export option "${key}"`);
+    it.exportOptions[key] = Boolean(value);
     await this._persist(importId);
   }
 
   _overridesWithNotes(it) {
     const merged = JSON.parse(JSON.stringify(it.overrides));
-    for (const [sentIndex, byLine] of Object.entries(it.tokenNotes)) {
-      const sentence = it.parsed.sentences[sentIndex];
-      for (const [lineIdx, n] of Object.entries(byLine)) {
-        if (n.lemmaStatus) editMiscKey(merged, sentence, Number(lineIdx), 'LemmaStatus', n.lemmaStatus);
-        if (n.alternatives.length) editMiscKey(merged, sentence, Number(lineIdx), 'AltLemma', n.alternatives.join(','));
+    if (it.exportOptions.recordUncertainty) {
+      for (const [sentIndex, byLine] of Object.entries(it.tokenNotes)) {
+        const sentence = it.parsed.sentences[sentIndex];
+        for (const [lineIdx, n] of Object.entries(byLine)) {
+          if (n.lemmaStatus) editMiscKey(merged, sentence, Number(lineIdx), 'LemmaStatus', n.lemmaStatus);
+          if (n.alternatives.length) editMiscKey(merged, sentence, Number(lineIdx), 'AltLemma', n.alternatives.join(','));
+        }
+      }
+    }
+    if (it.exportOptions.recordAnalysis) {
+      // only where the written values really come from the chosen reading (provenance names it)
+      for (const [sentIndex, byLine] of Object.entries(it.readingChoices)) {
+        this._pruneProv(it, Number(sentIndex));
+        for (const [lineIdx, raw] of Object.entries(byLine)) {
+          const prov = (it.provenance[sentIndex] || {})[lineIdx] || {};
+          const fromReading = Object.values(prov).some((p) => String(p.source).includes('analyzer') && p.detail === raw);
+          if (fromReading && !/[|\t\r\n]/.test(raw)) editMiscKey(merged, it.parsed.sentences[sentIndex], Number(lineIdx), 'Analysis', raw);
+        }
       }
     }
     return merged;
@@ -778,8 +795,10 @@ export class ConlluImportService {
   // ---- multi-column enhancement --------------------------------------------------------
 
   /**
-   * Makes the analyzer for `srcLang` available for proposals, without disturbing the workbench: only a saved
-   * or packaged model is loaded (no download, no starter fallback), and the active analyzer stays as it was.
+   * Makes the analyzer for `srcLang` available for proposals, without disturbing the workbench. It picks the model
+   * the way the workbench does: a model that is already loaded; else the one saved as the active analyzer for that
+   * language (downloaded, renewed or uploaded), else the saved UralicNLP one, else the packaged file in models/.
+   * There is no download and no starter fallback, and the workbench's active analyzer stays as it was.
    * @returns {Promise<boolean>} whether an analyzer for the language is available
    */
   async prepareLanguage(srcLang) {
@@ -790,13 +809,20 @@ export class ConlluImportService {
       activeModelName: analyzerService.activeModelName, isLoaded: analyzerService.isLoaded
     };
     try {
-      let buffer = null;
-      let id = `analyser-${lang}`;
-      let name = `${lang.toUpperCase()} Analyser`;
-      const saved = await storageService.getModel(`uralic_${lang}_analyser`);
-      if (saved && saved.buffer) {
-        ({ buffer, id, name } = { buffer: saved.buffer, id: saved.id, name: saved.name });
-      } else if (analyzerService.packagedModelPaths[lang]) {
+      let record = null;
+      const activeId = await storageService.getSetting('active_analyser_id', null);
+      if (activeId) {
+        const candidate = await storageService.getModel(activeId);
+        if (candidate && candidate.buffer && normalizeLangCode((candidate.metadata && candidate.metadata.lang) || '') === lang) record = candidate;
+      }
+      if (!record) {
+        const saved = await storageService.getModel(`uralic_${lang}_analyser`);
+        if (saved && saved.buffer) record = saved;
+      }
+      let buffer = record ? record.buffer : null;
+      const id = record ? record.id : `analyser-${lang}`;
+      const name = record ? record.name : `${lang.toUpperCase()} Analyser (${analyzerService.packagedModelPaths[lang] ? analyzerService.packagedModelPaths[lang].split('/').pop() : lang})`;
+      if (!buffer && analyzerService.packagedModelPaths[lang]) {
         const path = analyzerService.packagedModelPaths[lang];
         const url = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL(path) : path;
         const resp = await fetch(url);
@@ -810,6 +836,26 @@ export class ConlluImportService {
     } finally {
       Object.assign(analyzerService, keep);
     }
+  }
+
+  /**
+   * Which analyzer build produced the readings for a language: its name and id, where it came from (packaged file in
+   * models/, or saved in this browser: downloaded, renewed or uploaded) and, for a saved model, when and how big.
+   * @returns {Promise<null|{ lang: string, id: string, name: string, origin: string, savedAt: number|null, size: number|null }>}
+   */
+  async analyzerInfo(srcLang) {
+    const lang = normalizeLangCode(srcLang);
+    if (!analyzerService.hasModelForLanguage(lang)) return null;
+    const id = analyzerService.modelIds.get(lang) || `analyser-${lang}`;
+    const name = analyzerService.modelNames.get(lang) || id;
+    let record = null;
+    try { record = await storageService.getModel(id); } catch (e) { record = null; }
+    let origin;
+    if (record) origin = 'saved in this browser (downloaded, renewed or uploaded)';
+    else if (id === 'bundled_analyser') origin = 'bundled starter analyzer (a fallback, not made for this language)';
+    else if (id === `analyser-${lang}`) origin = `packaged file ${analyzerService.packagedModelPaths[lang] || 'in models/'}`;
+    else origin = 'loaded in this session';
+    return { lang, id, name, origin, savedAt: record ? record.timestamp || null : null, size: record ? record.size || null : null };
   }
 
   /** What the imported file itself uses (cached): its own layer of the inventory. */
@@ -858,10 +904,11 @@ export class ConlluImportService {
    * @param {number|null} sentIndex  null = whole file
    * Proposed UPOS / DEPREL values and FEATS pairs missing from every inventory layer (file, language, universal,
    * Uralic, other languages) get `needsConfirm: true` and `newPairs`; applying them needs `confirmNew: true`.
-   * @param {{ srcLang: string, tgtLang?: string, columns?: string[], inventoryLang?: string }} options
+   * @param {{ srcLang: string, tgtLang?: string, columns?: string[], inventoryLang?: string, xposStyle?: 'short'|'full' }} options
+   *   xposStyle: what XPOS receives from a reading: its short POS tag (N, default) or the full analyzer tag string (as emitted)
    *   inventoryLang: 'auto' (language of the text), 'none' (only what the file uses) or an inventory language code
    */
-  suggestEnhancements(importId, sentIndex, { srcLang, tgtLang, columns, inventoryLang = 'auto' } = {}) {
+  suggestEnhancements(importId, sentIndex, { srcLang, tgtLang, columns, inventoryLang = 'auto', xposStyle = 'short' } = {}) {
     const it = this._item(importId);
     const invLang = this.inventoryLanguage(srcLang, inventoryLang);
     const usage = this.fileUsage(importId);
@@ -923,8 +970,24 @@ export class ConlluImportService {
           return reading.alternatives ? `default from ${reading.defaultReason || 'the only matching reading'}; other readings exist` : '';
         };
         const readingFlags = () => ({ reading: tokenReading, needsChoice: Boolean(reading.ambiguous && !reading.choice) });
-        const simple = (column, current, proposed) => {
-          if (!reading || !proposed) return;
+        // value of a column from the chosen reading, or from the default pool when its readings agree; null = they differ
+        const fromReading = (column) => {
+          const key = column === 'xpos' && xposStyle === 'full' ? 'tagString' : column;
+          if (reading.ambiguous && !reading.choice && !reading.agree[key]) return null;
+          return column === 'xpos' && xposStyle === 'full' ? reading.tagString : reading[column];
+        };
+        const simple = (column, current) => {
+          if (!reading) return;
+          const proposed = fromReading(column);
+          if (proposed === null) {
+            // the default readings disagree on this column: nothing is guessed, the user picks a reading
+            fields.push({
+              ...base(w), column, from: current, to: current, status: 'none', source: 'analyzer',
+              note: 'the readings differ here; needs your choice', ...readingFlags()
+            });
+            return;
+          }
+          if (!proposed) return;
           let status = 'same';
           if (current !== proposed) status = isEmptyCell(current) ? 'fill' : 'conflict';
           const field = {
@@ -933,9 +996,9 @@ export class ConlluImportService {
           };
           fields.push(column === 'upos' && status !== 'same' ? flag(field, 'upos', [proposed]) : field);
         };
-        if (cols.includes('lemma') && reading) simple('lemma', lemma, reading.lemma);
-        if (cols.includes('upos') && reading) simple('upos', upos, reading.upos);
-        if (cols.includes('xpos') && reading) simple('xpos', xpos, reading.xpos);
+        if (cols.includes('lemma') && reading) simple('lemma', lemma);
+        if (cols.includes('upos') && reading) simple('upos', upos);
+        if (cols.includes('xpos') && reading) simple('xpos', xpos);
 
         if (cols.includes('feats')) {
           const gloss = featsFromGloss(this._rowGloss(w.cols[9], lang), upos);

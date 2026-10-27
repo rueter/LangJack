@@ -57,14 +57,16 @@ const stale = summarizeReadings(all, row, 'no+such+reading');
 assert.strictEqual(stale.choiceStale, true, 'A choice that no longer exists is ignored');
 assert.strictEqual(stale.lemma, 'awinhitxi');
 assert.strictEqual(summarizeReadings([R.plain], row).ambiguous, false, 'One reading: nothing to choose');
-// form first: a matching file lemma narrows the default only; the other readings stay visible and pickable
+// form first: the file's lemma narrows the default only within the plain readings; every reading stays visible and pickable
 const byFile = summarizeReadings(all, { lemma: 'awa', upos: 'NOUN' });
-assert.strictEqual(byFile.candidates.length, 4, 'a matching file lemma does not hide the other readings');
-assert.deepStrictEqual(byFile.candidates.filter((c) => c.inDefault).map((c) => c.lemma), ['awa', 'awa']);
-assert.deepStrictEqual(byFile.candidates.filter((c) => c.matchesFileLemma).map((c) => c.lemma), ['awa', 'awa'], 'labelled as matching the file');
-assert(byFile.defaultReason.includes("file's lemma"));
+assert.strictEqual(byFile.candidates.length, 4, 'a file lemma never hides a reading');
+assert.deepStrictEqual(byFile.candidates.filter((c) => c.inDefault).map((c) => c.lemma), ['awinhitxi', 'awinhitxi'], 'plain readings stay the default: the derived awa reading is not preferred');
+assert.deepStrictEqual(byFile.candidates.filter((c) => c.matchesFileLemma).map((c) => c.lemma), ['awa', 'awa'], 'but the readings matching the file are labelled');
+assert(byFile.candidates.filter((c) => c.matchesFileLemma).every((c) => !c.inDefault && c.group === 'other'));
 const other = summarizeReadings(all, { lemma: 'awa', upos: 'NOUN' }, R.plain.raw);
 assert.strictEqual(other.lemma, 'awinhitxi', 'the user can pick a lemma that differs from the file\'s');
+const derPick = summarizeReadings(all, { lemma: 'awinhi', upos: 'NOUN' }, R.derNo.raw);
+assert.strictEqual(derPick.lemma, 'awa', 'an explicit choice of a derived reading always wins');
 console.log('✓ Candidates, default, and a chosen reading supplying all four columns');
 
 // --- 2. Service ---------------------------------------------------------------------------------

@@ -253,8 +253,10 @@ console.log('\n--- Testing reading selection ---');
   const onlyDerived = summarizeReadings([readings[0], readings[2]], { lemma: 'awinhi', upos: 'NOUN' });
   assert.strictEqual(onlyDerived.readings, 2, 'derived readings are still used when nothing else exists');
   const byLemma = summarizeReadings(readings, { lemma: 'awa', upos: 'NOUN' });
-  assert.strictEqual(byLemma.readings, 2, 'a matching lemma still decides, derived or not');
-  console.log('✓ Plain readings preferred over derived ones; a matching lemma still decides');
+  assert.strictEqual(byLemma.readings, 2, 'two readings stay in the default pool');
+  assert.strictEqual(byLemma.lemma, 'awinhitxi', 'plain readings are the default even when the file\'s lemma equals a derived one (it is only labelled)');
+  assert.strictEqual(byLemma.candidates.length, 4, 'and no reading is hidden');
+  console.log('✓ Plain readings preferred over derived ones; a matching lemma is a label, not a filter');
 }
 
 console.log('\nAll multi-column enhancement tests passed.');

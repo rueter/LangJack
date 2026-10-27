@@ -1851,4 +1851,7 @@ td.ci-form { font-weight: 700; }
 details.ci-rd-box > summary { cursor: pointer; }
 details.ci-rd-box { display: block; }
 details.ci-rd-box > *:not(summary) { margin-top: 4px; }
+.ci-xpos-pick { margin: 4px 0; display: grid; gap: 2px; }
+.ci-xpos-pick select { width: 100%; max-width: 100%; padding: 3px 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; background: var(--surface); }
+.ci-analyzer select { margin-left: 4px; }
 
