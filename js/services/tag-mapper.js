@@ -152,9 +152,7 @@ export const TAG_TO_FEATS = {
   'Act': { feature: 'Voice', value: 'Act' },
   'Pass': { feature: 'Voice', value: 'Pass' },
 
-  // Transitivity
-  'IV': { feature: 'Subcat', value: 'Intr' },
-  'TV': { feature: 'Subcat', value: 'Tran' },
+  // Transitivity (IV, TV) is deliberately not mapped: it gives no UD feature (it stays in GTtags / XPOS)
 
   // Person / Number (General & Subject Conjugation)
   'Sg1': [{ feature: 'Person', value: '1' }, { feature: 'Number', value: 'Sing' }],
