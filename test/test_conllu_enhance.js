@@ -270,6 +270,18 @@ console.log('\n--- Testing analyzer tag mapping ---');
   assert.strictEqual(pl['Number[subj]'], 'Plur');
   assert.strictEqual(pl['Gender[subj]'], 'Masc');
   console.log('✓ NFut gives Tense=Past,Pres; ScSg3M is Sing and ScPl3M is Plur');
+  assert.strictEqual(TagMapper.parse('ywa+Pron+Pers+Sg3+Msc+Nom').featsMap.PronType, 'Prs');
+  assert.strictEqual(TagMapper.parse('xyz+Pron+Interr+Nom').featsMap.PronType, 'Int');
+  assert.strictEqual(TagMapper.parse('xyz+Pron+Dem+Nom').featsMap.PronType, 'Dem');
+  assert.strictEqual(TagMapper.parse('awa+v1+V+Der+Der/NomAct+N+Msc+Sg+Nom').featsMap.VerbForm, 'Vnoun');
+  assert.strictEqual(TagMapper.parse('xyz+V+NomAct').featsMap.VerbForm, 'Vnoun');
+  const variant = TagMapper.parse('awa+v1+V+Der');
+  assert.strictEqual(Object.keys(variant.featsMap).length, 0, 'variant (v1) and Der tags give no Feature=Value');
+  const { isVariantTag, variantNumber } = await import('../js/services/tag-mapper.js');
+  assert(isVariantTag('v1') && isVariantTag('v25') && !isVariantTag('V') && !isVariantTag('Vblz'));
+  assert.strictEqual(variantNumber(['v2', 'V']), 2);
+  assert.strictEqual(variantNumber(['V', 'Sg3']), null);
+  console.log('✓ PronType (Pers, Interr, Dem) and VerbForm=Vnoun (NomAct, Der/NomAct); v-tags and Der add no FEATS');
 }
 
 console.log('\nAll multi-column enhancement tests passed.');

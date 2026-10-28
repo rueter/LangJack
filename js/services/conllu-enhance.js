@@ -4,7 +4,7 @@
  * Nothing here writes anything; conllu-import-service.js decides what may be applied.
  */
 
-import { TAG_TO_FEATS, stripGuessTags } from './tag-mapper.js';
+import { TAG_TO_FEATS, stripGuessTags, isVariantTag, variantNumber } from './tag-mapper.js';
 import { dependencyService } from './dependency-service.js';
 
 /** Columns the enhancement may fill. ID and FORM are locked: changing them breaks token alignment and `# text`. */
@@ -189,8 +189,28 @@ export const isDerivedReading = (r) => readingTags(r).some((t) => t === 'Der' ||
 /** Compounding (Cmp, Cmp/..., or a # boundary) anywhere in the analysis. */
 export const isCompoundReading = (r) => readingTags(r).some((t) => t === 'Cmp' || t.startsWith('Cmp/')) || /#/.test(r.raw || '');
 
-/** Identity of a reading independent of tag order: lemma plus the SET of tags. */
+/** Identity of a reading independent of tag order: lemma plus the SET of tags (a variant tag makes it a different reading). */
 export const readingKey = (r) => `${stripGuessTags(r.lemma || '')}\u0000${[...new Set(readingTags(r))].sort().join('+')}`;
+
+/** The reading without its variant tag (v1, v2, ...): readings with the same substance give the same FEATS and POS. */
+const substanceKey = (r) => `${stripGuessTags(r.lemma || '')}\u0000${[...new Set(readingTags(r).filter((t) => !isVariantTag(t)))].sort().join('+')}`;
+
+/** GiellaLT variant number of a reading (v1 -> 1), or null when it has no variant tag. */
+export const readingVariant = (r) => variantNumber(readingTags(r));
+/** v1 has priority and a reading without a variant tag counts as v1. */
+const variantRank = (r) => readingVariant(r) ?? 1;
+
+/**
+ * The tag readout in the LangJack / GiellaLT `GTtags=` convention of MISC: every tag after the lemma stem except the
+ * reading's POS tag itself, separated by commas, in the order the analyzer emitted them (a variant tag, which comes
+ * first, is included). Example: ywa+Pron+Pers+Sg3+Msc+Nom -> "Pers,Sg3,Msc,Nom".
+ */
+export function gtTagsOf(r) {
+  const tags = [...readingTags(r)];
+  const at = r.pos ? tags.indexOf(r.pos) : -1;
+  if (at !== -1) tags.splice(at, 1);
+  return tags.join(',');
+}
 
 /**
  * What the analyzer says about a token, looked up by its FORM. The word form is primary: the file's LEMMA is a
@@ -205,7 +225,9 @@ export const readingKey = (r) => `${stripGuessTags(r.lemma || '')}\u0000${[...ne
  * @param {Array<Object>} readings  analyzer readings
  * @param {{ lemma: string, upos: string }} row  the file's current values (hypotheses)
  * @param {string|null} [choice]  raw analysis of the reading the user picked; null = default rule
- * @returns {null|{ lemma: string, upos: string, xpos: string, tagString: string, feats: Map<string,string>, readings: number,
+ * Variants: GiellaLT v-tags (v1..v25) rank readings (v1 first, a reading without one counts as v1) but never filter
+ * them, and readings that differ only in the variant do not make the default ambiguous.
+ * @returns {null|{ lemma: string, upos: string, xpos: string, tagString: string, gtTags: string, feats: Map<string,string>, readings: number,
  *   ambiguous: boolean, alternatives: boolean, choice: string|null, choiceStale: boolean, shared: Map<string,string>,
  *   agree: { lemma: boolean, upos: boolean, xpos: boolean, tagString: boolean },
  *   defaultReason: string, candidates: Array<Object> }}
@@ -222,13 +244,17 @@ export function summarizeReadings(readings, row, choice = null) {
   }
   if (!usable.length) return null;
 
+  const order = new Map(usable.map((r, i) => [r, i])); // the analyzer's own order breaks ties
+  const byVariant = (a, b) => variantRank(a) - variantRank(b) || order.get(a) - order.get(b);
   const plainGroup = usable.filter((r) => !isDerivedReading(r) && !isCompoundReading(r));
   const base = plainGroup.length ? plainGroup : usable;
   const sameLemma = base.filter((r) => stripGuessTags(r.lemma) === row.lemma);
   const pool = sameLemma.length ? sameLemma : base;
   const sameUpos = pool.filter((r) => r.upos === row.upos);
   const chosen = sameUpos.length ? sameUpos : pool;
-  const first = chosen[0];
+  // every variant stays selectable; v1 (or no v-tag) leads, and readings that differ only in the variant are no ambiguity
+  const first = [...chosen].sort(byVariant)[0];
+  const substances = new Set(chosen.map(substanceKey));
   let shared = null;
   for (const r of chosen) {
     const own = new Map(Object.entries(r.featsMap || {}));
@@ -245,34 +271,40 @@ export function summarizeReadings(readings, row, choice = null) {
     const compound = isCompoundReading(r);
     return {
       raw: r.raw || '', lemma: stripGuessTags(r.lemma), upos: r.upos, xpos: r.pos || '', tagString: readingTags(r).join('+'),
+      gtTags: gtTagsOf(r), variant: readingVariant(r),
       feats: featsToString(new Map(Object.entries(r.featsMap || {}))), derived, compound,
       kind: derived && compound ? 'derived+compound' : derived ? 'derived' : compound ? 'compound' : 'plain',
       group: derived || compound ? 'other' : 'plain',
       matchesFileLemma: stripGuessTags(r.lemma) === row.lemma, inDefault: chosen.includes(r)
     };
   };
-  // plain readings first, then derived and compound ones; the analyzer's own order inside each group
-  const candidates = usable.map(describe).sort((a, b) => (a.group === b.group ? 0 : a.group === 'plain' ? -1 : 1));
+  // plain readings first, then derived and compound ones; inside each group by variant (v1 first), then the analyzer's order
+  const sortedUsable = [...usable].sort((a, b) => {
+    const ga = isDerivedReading(a) || isCompoundReading(a) ? 1 : 0;
+    const gb = isDerivedReading(b) || isCompoundReading(b) ? 1 : 0;
+    return ga - gb || byVariant(a, b);
+  });
+  const candidates = sortedUsable.map(describe);
   const same = (get) => chosen.every((r) => get(r) === get(first));
   const common = {
-    ambiguous: chosen.length > 1, alternatives: usable.length > 1, shared: shared || new Map(), candidates,
+    ambiguous: substances.size > 1, alternatives: usable.length > 1, shared: shared || new Map(), candidates,
     defaultReason: reasons.join(' and '),
     agree: {
       lemma: same((r) => stripGuessTags(r.lemma)), upos: same((r) => r.upos), xpos: same((r) => r.pos || ''),
-      tagString: same((r) => [...new Set(readingTags(r))].sort().join('+'))
+      tagString: same((r) => [...new Set(readingTags(r).filter((t) => !isVariantTag(t)))].sort().join('+'))
     }
   };
   const picked = choice ? usable.find((r) => r.raw === choice) : null;
   if (picked) {
     return {
       lemma: stripGuessTags(picked.lemma), upos: picked.upos, xpos: picked.pos || '', tagString: readingTags(picked).join('+'),
-      feats: new Map(Object.entries(picked.featsMap || {})), readings: 1, choice: picked.raw, choiceStale: false, ...common,
+      gtTags: gtTagsOf(picked), feats: new Map(Object.entries(picked.featsMap || {})), readings: 1, choice: picked.raw, choiceStale: false, ...common,
       agree: { lemma: true, upos: true, xpos: true, tagString: true }
     };
   }
   return {
     lemma: stripGuessTags(first.lemma), upos: first.upos, xpos: first.pos || '', tagString: readingTags(first).join('+'),
-    feats: common.shared, readings: chosen.length, choice: null, choiceStale: Boolean(choice), ...common
+    gtTags: gtTagsOf(first), feats: common.shared, readings: substances.size, choice: null, choiceStale: Boolean(choice), ...common
   };
 }
 

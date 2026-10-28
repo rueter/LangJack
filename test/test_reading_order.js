@@ -8,15 +8,18 @@
  *    an explicit choice (also of a derived reading) always wins and drives LEMMA, UPOS, XPOS and FEATS together.
  * 4. XPOS gets the short POS tag or the full analyzer tag string (as emitted); a non-empty XPOS is never
  *    overwritten silently; readings that disagree propose nothing until the user chooses.
- * 5. Analysis=<reading> is only written to MISC when that option is on and the values come from that reading.
- * 6. Which analyzer build produced the readings can be shown.
+ * 5. GiellaLT variant tags (v1..v25) rank readings without filtering them or making the default ambiguous.
+ * 6. GTtags=<tags> (the analyzer's tag readout, comma-separated) is only proposed when the option is on, for a single
+ *    reading, and an existing different GTtags is never replaced without confirmation; the old option name still works.
+ * 7. Which analyzer build produced the readings can be shown.
  */
 
 import assert from 'node:assert';
 import { TagMapper } from '../js/services/tag-mapper.js';
 import {
-  summarizeReadings, isDerivedReading, isCompoundReading, readingKey, readingTags
+  summarizeReadings, isDerivedReading, isCompoundReading, readingKey, readingTags, gtTagsOf, readingVariant
 } from '../js/services/conllu-enhance.js';
+import { storageService } from '../js/services/storage-service.js';
 import { parseConllu } from '../js/services/conllu-parser.js';
 import { conlluImportService as svc } from '../js/services/conllu-import-service.js';
 import { analyzerService } from '../js/services/analyzer-service.js';
@@ -106,8 +109,48 @@ assert.strictEqual(chosen.tagString, 'v1+V+Der+Der/NomAct+N+Msc+Sg+Nom+NPossd', 
 assert.strictEqual(chosen.choice, R(NEW.derNo).raw);
 console.log('✓ Plain first and default; derived/compound below; explicit choice wins');
 
-// --- 4/5. Service: XPOS style, no silent overwrite, Analysis= ---------------------------------------------
-console.log('\n--- 4. Testing XPOS from the reading and the Analysis= option ---');
+// --- 3b. Variants ------------------------------------------------------------------------------------
+console.log('\n--- 3b. Testing GiellaLT variant tags ---');
+const v = (n, rest = 'N+Msc+Sg+Nom', lemma = 'awinhitxi') => R(`${lemma}${n ? `+v${n}` : ''}+${rest}`);
+assert.strictEqual(readingVariant(v(2)), 2);
+assert.strictEqual(readingVariant(v(null)), null);
+// v1 before v2, a reading without a v-tag counts as v1, whatever the input order
+const v1v2 = summarizeReadings([v(2), v(1)], row);
+assert.deepStrictEqual(v1v2.candidates.map((c) => c.variant), [1, 2], 'v1 before v2');
+assert.deepStrictEqual(summarizeReadings([v(1), v(2)], row).candidates.map((c) => c.variant), [1, 2]);
+assert.deepStrictEqual(summarizeReadings([v(2), v(null)], row).candidates.map((c) => c.variant), [null, 2], 'no v-tag counts as v1: before v2');
+assert.deepStrictEqual(summarizeReadings([v(null), v(2)], row).candidates.map((c) => c.variant), [null, 2]);
+assert.deepStrictEqual(summarizeReadings([v(1), v(null)], row).candidates.map((c) => c.variant), [1, null], 'tie: the analyzer\'s order');
+assert.deepStrictEqual(summarizeReadings([v(10), v(2)], row).candidates.map((c) => c.variant), [2, 10], 'numeric, not alphabetical');
+// all variants stay selectable and in the default pool; they do not make the token ambiguous
+assert.strictEqual(v1v2.candidates.length, 2, 'variants are not filtered out');
+assert.strictEqual(v1v2.ambiguous, false, 'readings that differ only in the variant: no "needs your choice"');
+assert.strictEqual(v1v2.readings, 1);
+assert.strictEqual(v1v2.candidates[0].tagString.startsWith('v1+'), true);
+assert.strictEqual(summarizeReadings([v(2), v(1)], row).tagString, 'v1+N+Msc+Sg+Nom', 'the default is the v1 reading');
+assert.strictEqual(summarizeReadings([v(3), v(2), v(null)], row).tagString, 'N+Msc+Sg+Nom', 'a reading with no v-tag is the default over v2 and v3');
+assert(v1v2.candidates.every((c) => c.inDefault));
+assert.strictEqual(summarizeReadings([v(2), v(1)], row, v(2).raw).tagString, 'v2+N+Msc+Sg+Nom', 'a variant can be chosen explicitly');
+// but a real difference besides the variant is ambiguous
+const px = v(1, 'N+Msc+Sg+PxSg3M+Nom');
+assert.strictEqual(summarizeReadings([v(1), px, v(2)], row).ambiguous, true);
+// variants of one plain reading plus different derived ones: still unambiguous, derived stay below
+const mixedV = summarizeReadings([R(OLD.derPx), v(2), v(1)], row);
+assert.deepStrictEqual(mixedV.candidates.map((c) => c.kind), ['plain', 'plain', 'derived']);
+assert.strictEqual(mixedV.ambiguous, false);
+// variant ordering inside the derived group, and as the default when only derived readings exist
+const d2 = R('awa+v2+V+Der+Der/NomAct+N+Msc+Sg+Nom');
+const d1 = R('awa+v1+V+Der+Der/NomAct+N+Msc+Sg+Nom');
+assert.deepStrictEqual(summarizeReadings([d2, d1], row).candidates.map((c) => c.variant), [1, 2]);
+assert.strictEqual(summarizeReadings([d2, d1], row).ambiguous, false);
+// FEATS: v-tags add none, so variants give identical features
+assert.deepStrictEqual(v(1).featsMap, v(null).featsMap);
+// full-tag XPOS agreement ignores the variant
+assert.strictEqual(v1v2.agree.tagString, true);
+console.log('✓ v1 first, no v-tag = v1, all variants selectable, variants alone are no ambiguity');
+
+// --- 4/5. Service: XPOS style, no silent overwrite, GTtags -----------------------------------------------------
+console.log('\n--- 4. Testing XPOS from the reading ---');
 const t = '\t';
 const FIXTURE = [
   '# sent_id = O-1', '# text = Awinhi.',
@@ -162,26 +205,93 @@ assert.strictEqual(tf(fields, 'awinhi', 'lemma').to, 'awa');
 assert.strictEqual(tf(fields, 'awinhi', 'feats').reading.choice, derNo.raw);
 assert(!tf(fields, 'awinhi', 'feats').needsChoice);
 
-// Analysis=: off by default, on: only where the values come from the chosen reading
-await svc.setReadingChoice(id, 0, L(1), plainPx.raw);
-fields = svc.suggestEnhancements(id, 0, base);
-await svc.applyEnhancements(id, fields.filter((f) => f.form === 'awinhi').map((f) => ({ ...f, overwrite: true })));
-const noOpt = svc.exportText(id);
-assert(!noOpt.includes('Analysis='), 'off by default');
-assert.strictEqual(svc.exportOptions(id).recordAnalysis, false);
-await svc.setExportOption(id, 'recordAnalysis', true);
-const withOpt = parseConllu(svc.exportText(id));
-assert.strictEqual(withOpt.sentences[0].lines[L(1)].cols[9], `Analysis=${plainPx.raw}`, 'the chosen analysis string, as emitted');
-assert.strictEqual(withOpt.sentences[0].lines[L(2)].cols[9], '_', 'other tokens untouched');
-await svc.setReadingChoice(id, 0, L(1), derNo.raw); // choice changed, values not yet re-applied from it
-assert(!svc.exportText(id).includes('Analysis='), 'no claim about a reading the values do not come from');
-await svc.setExportOption(id, 'recordAnalysis', false);
 await svc.revertAll(id);
 assert.strictEqual(svc.exportText(id), FIXTURE);
-await rejectsOption();
-async function rejectsOption() { await assert.rejects(() => svc.setExportOption(id, 'nope', true), /Unknown export option/); }
+await assert.rejects(() => svc.setExportOption(id, 'nope', true), /Unknown export option/);
 await svc.removeImport(id);
-console.log('✓ XPOS short / full from the reading; no silent overwrite; Analysis= only on request');
+console.log('✓ XPOS short / full from the reading; no silent overwrite');
+
+// --- 5b. GTtags ---------------------------------------------------------------------------------------------
+console.log('\n--- 5. Testing GTtags (the analyzer\'s tag readout) in MISC ---');
+// the convention of the Apurinã file: tags after the lemma except the POS tag, comma-separated, analyzer order
+assert.strictEqual(gtTagsOf(R('ywa+Pron+Pers+Sg3+Msc+Nom')), 'Pers,Sg3,Msc,Nom');
+assert.strictEqual(gtTagsOf(R('iãkyny+N+Msc+Sg+PxSg3M+Com')), 'Msc,Sg,PxSg3M,Com');
+assert.strictEqual(gtTagsOf(R('apuka+V+Pred+ScSg3M+Oc3M')), 'Pred,ScSg3M,Oc3M');
+assert.strictEqual(gtTagsOf(R(OLD.derPx)), 'v1,V,Der,Der/NomAct,Msc,Sg,PxSg3M,Possd,Nom', 'variant first, derivation history kept, the final POS tag N left out');
+assert.strictEqual(gtTagsOf(R(NEW.derPx)), 'v1,V,Der,Der/NomAct,Msc,Sg,Nom,Possd,PxSg3M', 'exactly the analyzer\'s order, not sorted');
+assert.strictEqual(gtTagsOf(R(NEW.plainPx)), 'Msc,Sg,Nom,Possd,PxSg3M');
+assert.strictEqual(summarizeReadings([R(OLD.plain)], row).gtTags, 'Msc,Sg,Possd,Nom');
+assert.strictEqual(summarizeReadings([v(2), v(1)], row).gtTags, 'v1,Msc,Sg,Nom', 'default reading: the variant tag is included');
+
+const GT = [
+  '# sent_id = G-1', '# text = Awinhi Amary akyru.',
+  ['1', 'awinhi', 'awinhi', 'NOUN', '_', '_', '_', '_', '_', '_'].join(t),
+  ['2', 'Amary', 'amary', 'NOUN', '_', '_', '_', '_', '_', 'GTtags=Msc,Sg,Nom'].join(t),
+  ['3', 'akyru', 'akyru', 'NOUN', '_', '_', '_', '_', '_', 'GTtags=Old,Readout|SpaceAfter=No'].join(t),
+  ['4', 'Aiku', 'aiku', 'NOUN', '_', '_', '_', '_', '_', 'GTtags=Fem,Sg,PxSg3M,Nom'].join(t),
+  '', ''
+].join('\n');
+const impG = await svc.importText(GT, 'gt-fixture.conllu');
+const gid = impG.importId;
+const gparsed = parseConllu(GT);
+const GL = (n) => gparsed.sentences[0].lines.findIndex((l) => l.cols && l.cols[0] === String(n));
+const gopts = { srcLang: 'apu', columns: ['misc'] };
+const gt = (fields, form) => fields.find((f) => f.form === form && f.column === 'misc' && f.key === 'GTtags');
+
+// off by default: no GTtags proposals at all, and the existing ones are left alone
+let gf = svc.suggestEnhancements(gid, 0, gopts);
+assert.strictEqual(svc.exportOptions(gid).recordTags, false, 'off by default');
+assert.strictEqual(gf.filter((f) => f.key === 'GTtags').length, 0);
+assert.strictEqual(svc.exportText(gid), GT);
+
+await svc.setExportOption(gid, 'recordTags', true);
+gf = svc.suggestEnhancements(gid, 0, gopts);
+assert.strictEqual(gt(gf, 'awinhi'), undefined, 'awinhi has two plain readings and none is chosen: no GTtags guessed');
+// choose a reading: GTtags of exactly that reading
+const awCands = svc.suggestEnhancements(gid, 0, { srcLang: 'apu', columns: ['feats'] }).find((f) => f.form === 'awinhi').reading.candidates;
+const pick = awCands.find((c) => c.group === 'plain' && c.feats.includes('Person[psor]=3'));
+await svc.setReadingChoice(gid, 0, GL(1), pick.raw);
+gf = svc.suggestEnhancements(gid, 0, gopts);
+assert.strictEqual(gt(gf, 'akyru'), undefined, 'akyru is ambiguous too: no GTtags until a reading is chosen');
+const akCands = svc.suggestEnhancements(gid, 0, { srcLang: 'apu', columns: ['feats'] }).find((f) => f.form === 'akyru').reading.candidates;
+await svc.setReadingChoice(gid, 0, GL(3), akCands[0].raw);
+gf = svc.suggestEnhancements(gid, 0, gopts);
+const g1 = gt(gf, 'awinhi');
+assert.deepStrictEqual([g1.from, g1.to, g1.status], [null, pick.gtTags, 'fill'], 'empty: can be filled');
+assert.strictEqual(pick.gtTags, 'Msc,Sg,PxSg3M,Possd,Nom');
+// no silent overwrite of an existing different GTtags; equal is "same"; untouched rows stay as they are
+const g3 = gt(gf, 'akyru');
+assert.strictEqual(g3.status, 'conflict');
+assert.strictEqual(g3.from, 'Old,Readout', 'the original value is shown');
+assert(g3.to.length > 0 && g3.to !== g3.from);
+assert.strictEqual(gt(gf, 'Amary').status, 'conflict', 'Amary\'s single reading differs from the stored GTtags: shown, not applied');
+assert.strictEqual(gt(gf, 'Amary').from, 'Msc,Sg,Nom');
+let r = await svc.applyEnhancements(gid, gf.filter((f) => f.key === 'GTtags'));
+assert.strictEqual(r.replaced, 0, 'nothing non-empty was replaced');
+assert.strictEqual(svc.workingCols(gid, 0, GL(3))[9], 'GTtags=Old,Readout|SpaceAfter=No', 'existing GTtags of akyru untouched');
+assert.strictEqual(svc.workingCols(gid, 0, GL(4))[9], 'GTtags=Fem,Sg,PxSg3M,Nom', 'rows never touched stay as they are');
+assert.strictEqual(svc.workingCols(gid, 0, GL(1))[9], `GTtags=${pick.gtTags}`, 'the empty one was filled');
+assert.strictEqual(svc.provenance(gid, 0, GL(1))['misc:GTtags'].source, 'analyzer');
+assert.strictEqual(svc.provenance(gid, 0, GL(1))['misc:GTtags'].detail, pick.raw, 'provenance names the reading');
+// with confirmation the old value is replaced, keeping the other MISC keys
+r = await svc.applyEnhancements(gid, [{ ...g3, overwrite: true }]);
+assert.strictEqual(r.replaced, 1);
+assert(svc.workingCols(gid, 0, GL(3))[9].endsWith('|SpaceAfter=No') && svc.workingCols(gid, 0, GL(3))[9].startsWith('GTtags='));
+await svc.revertAll(gid);
+assert.strictEqual(svc.exportText(gid), GT);
+await svc.setExportOption(gid, 'recordTags', false);
+await svc.removeImport(gid);
+
+// the old option name keeps working: a saved working copy with recordAnalysis reads as recordTags
+const impL = await svc.importText(GT.replace('G-1', 'G-legacy'), 'legacy.conllu');
+await storageService.saveConlluWorking({ importId: impL.importId, overrides: {}, exportName: 'x.conllu', exportOptions: { recordAnalysis: true } });
+await svc.init();
+assert.strictEqual(svc.exportOptions(impL.importId).recordTags, true, 'old saved recordAnalysis value is read as recordTags');
+assert.strictEqual('recordAnalysis' in svc.exportOptions(impL.importId), false);
+await svc.setExportOption(impL.importId, 'recordAnalysis', false);
+assert.strictEqual(svc.exportOptions(impL.importId).recordTags, false, 'the old name still sets the option');
+await svc.removeImport(impL.importId);
+console.log('✓ GTtags format; filled when empty; never overwrites a different value without confirmation; old option name read');
 
 // --- 6. Analyzer info ------------------------------------------------------------------------------------
 console.log('\n--- 5. Testing which analyzer build is shown ---');

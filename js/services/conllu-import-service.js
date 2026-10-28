@@ -62,6 +62,12 @@ const LEMMA_STATUS = ['uncertain', 'undecided'];
 const lowerOrder = (a, b) => { const x = a.toLowerCase(); const y = b.toLowerCase(); return x < y ? -1 : x > y ? 1 : 0; };
 
 export class ConlluImportService {
+  /** Saved options, with the old name `recordAnalysis` (Analysis=…) read as `recordTags` (GTtags=…). */
+  static _options(saved) {
+    const { recordAnalysis, ...rest } = saved;
+    return { recordUncertainty: false, recordTags: false, ...rest, ...(recordAnalysis && rest.recordTags === undefined ? { recordTags: true } : {}) };
+  }
+
   constructor(inventory = featureInventory) {
     this.items = new Map(); // importId -> { meta, parsed, overrides, exportName }
     this.inventory = inventory; // language-aware Feature=Value / UPOS / DEPREL inventory
@@ -90,7 +96,7 @@ export class ConlluImportService {
       readingChoices: (working && working.readingChoices) || {}, // { sentIndex: { lineIdx: raw analysis } }: which reading the user picked
       provenance: (working && working.provenance) || {}, // { sentIndex: { lineIdx: { 'lemma' | 'feats' | 'feats:Key' | 'misc:Key': { source, detail, at } } } }
       tokenNotes: (working && working.tokenNotes) || {}, // { sentIndex: { lineIdx: { lemmaStatus, alternatives: [lemma] } } }
-      exportOptions: { recordUncertainty: false, recordAnalysis: false, ...((working && working.exportOptions) || {}) },
+      exportOptions: ConlluImportService._options((working && working.exportOptions) || {}),
       exportName: (working && working.exportName) || defaultExportFileName(original.fileName)
     };
     this.items.set(original.importId, item);
@@ -287,7 +293,7 @@ export class ConlluImportService {
   /** The working file as CoNLL-U text. Untouched sentences are byte-identical to the original. */
   exportText(importId) {
     const it = this._item(importId);
-    return serializeConllu(it.parsed, it.exportOptions.recordUncertainty || it.exportOptions.recordAnalysis ? this._overridesWithNotes(it) : it.overrides);
+    return serializeConllu(it.parsed, it.exportOptions.recordUncertainty ? this._overridesWithNotes(it) : it.overrides);
   }
 
   /** The unchanged original text, exactly as imported. */
@@ -591,14 +597,17 @@ export class ConlluImportService {
   exportOptions(importId) { return { ...this._item(importId).exportOptions }; }
 
   /**
-   * Optional extras for the exported file, both off by default:
-   * recordUncertainty: LemmaStatus=… and AltLemma=… in MISC for tokens you marked;
-   * recordAnalysis: Analysis=<the analyzer reading you chose> in MISC for tokens whose values come from that reading.
+   * Optional extras, both off by default:
+   * recordUncertainty: LemmaStatus=… and AltLemma=… in MISC of the exported file for tokens you marked;
+   * recordTags: also propose GTtags=… (the analyzer's tag readout, comma-separated, as in the Apurinã file) in MISC for
+   *   the reading a token is based on. These are ordinary proposals: an existing different GTtags is never replaced
+   *   without confirmation. (The older name `recordAnalysis` is accepted as `recordTags`.)
    */
   async setExportOption(importId, key, value) {
     const it = this._item(importId);
-    if (key !== 'recordUncertainty' && key !== 'recordAnalysis') throw new ManualEditError('INVALID', `Unknown export option "${key}"`);
-    it.exportOptions[key] = Boolean(value);
+    const name = key === 'recordAnalysis' ? 'recordTags' : key;
+    if (name !== 'recordUncertainty' && name !== 'recordTags') throw new ManualEditError('INVALID', `Unknown export option "${key}"`);
+    it.exportOptions[name] = Boolean(value);
     await this._persist(importId);
   }
 
@@ -610,17 +619,6 @@ export class ConlluImportService {
         for (const [lineIdx, n] of Object.entries(byLine)) {
           if (n.lemmaStatus) editMiscKey(merged, sentence, Number(lineIdx), 'LemmaStatus', n.lemmaStatus);
           if (n.alternatives.length) editMiscKey(merged, sentence, Number(lineIdx), 'AltLemma', n.alternatives.join(','));
-        }
-      }
-    }
-    if (it.exportOptions.recordAnalysis) {
-      // only where the written values really come from the chosen reading (provenance names it)
-      for (const [sentIndex, byLine] of Object.entries(it.readingChoices)) {
-        this._pruneProv(it, Number(sentIndex));
-        for (const [lineIdx, raw] of Object.entries(byLine)) {
-          const prov = (it.provenance[sentIndex] || {})[lineIdx] || {};
-          const fromReading = Object.values(prov).some((p) => String(p.source).includes('analyzer') && p.detail === raw);
-          if (fromReading && !/[|\t\r\n]/.test(raw)) editMiscKey(merged, it.parsed.sentences[sentIndex], Number(lineIdx), 'Analysis', raw);
         }
       }
     }
@@ -925,7 +923,8 @@ export class ConlluImportService {
     const lang = tgtLang || conv.lang || 'eng';
     const fields = [];
     const useAnalyzer = analyzerService.hasModelForLanguage(srcLang);
-    const needsReading = cols.some((c) => ['lemma', 'upos', 'xpos', 'feats'].includes(c));
+    const recordTags = Boolean(it.exportOptions.recordTags);
+    const needsReading = recordTags || cols.some((c) => ['lemma', 'upos', 'xpos', 'feats'].includes(c));
     const indexes = sentIndex === null || sentIndex === undefined ? it.parsed.sentences.map((s) => s.index) : [sentIndex];
 
     for (const idx of indexes) {
@@ -996,6 +995,16 @@ export class ConlluImportService {
           };
           fields.push(column === 'upos' && status !== 'same' ? flag(field, 'upos', [proposed]) : field);
         };
+        // GTtags (the analyzer's tag readout) for the reading the token is based on: only when that is one reading
+        if (recordTags && reading && (!reading.ambiguous || reading.choice) && reading.gtTags) {
+          const have = parseMisc(w.cols[9]).find((seg) => seg.key === 'GTtags');
+          const haveValue = have ? (have.value === null ? '' : have.value) : null;
+          const status = haveValue === null ? 'fill' : haveValue === reading.gtTags ? 'same' : 'conflict';
+          fields.push({
+            ...base(w), column: 'misc', key: 'GTtags', from: haveValue, to: reading.gtTags, status, source: 'analyzer',
+            note: reading.choice ? 'tags of the reading you chose' : 'tags of the default reading', ...readingFlags()
+          });
+        }
         if (cols.includes('lemma') && reading) simple('lemma', lemma);
         if (cols.includes('upos') && reading) simple('upos', upos);
         if (cols.includes('xpos') && reading) simple('xpos', xpos);

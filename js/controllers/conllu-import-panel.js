@@ -20,6 +20,8 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
 const SOURCE_LABEL = { manual: 'by hand', analyzer: 'analyzer reading', gloss: 'gloss', dictionary: 'dictionary', 'gloss + analyzer': 'gloss + analyzer reading' };
+/** Key of a proposal: a MISC proposal also carries its MISC key (gloss[pt], GTtags), so a token can have several. */
+const fieldKey = (f) => `${f.sentIndex}:${f.lineIdx}:${f.column}${f.key ? `:${f.key}` : ''}`;
 const breakable = (value) => esc(value).replace(/\|/g, '|<wbr>'); // lets long FEATS/MISC values wrap at the bars
 
 export class ConlluImportPanel {
@@ -164,8 +166,6 @@ export class ConlluImportPanel {
         <button class="btn btn-secondary" data-action="download-original" title="The file exactly as imported">⬇ Original</button>
         <label class="ci-inline ci-grow" title="Off by default: the exported file then holds exactly your edits and nothing else"><input type="checkbox" data-role="export-uncertainty" ${this.service.exportOptions(this.currentId).recordUncertainty ? 'checked' : ''}>
           also record uncertain lemmas in MISC (<code>LemmaStatus=</code>, <code>AltLemma=</code>) — optional, off by default</label>
-        <label class="ci-inline ci-grow" title="Off by default. Written only for tokens whose values were applied from the reading you chose."><input type="checkbox" data-role="export-analysis" ${this.service.exportOptions(this.currentId).recordAnalysis ? 'checked' : ''}>
-          also record the chosen analysis in MISC (<code>Analysis=…</code>) — optional, off by default</label>
       </div>`;
   }
 
@@ -192,7 +192,9 @@ export class ConlluImportPanel {
     return `<p class="vw-hint ci-analyzer">${text}
       <label class="ci-inline" title="What the XPOS cell receives when a reading is used. A non-empty XPOS is never replaced without your confirmation.">XPOS gets
         <select data-role="xpos-style"><option value="short"${this.xposStyle === 'short' ? ' selected' : ''}>the short POS tag (N)</option>
-          <option value="full"${this.xposStyle === 'full' ? ' selected' : ''}>the full analyzer tag string</option></select></label></p>`;
+          <option value="full"${this.xposStyle === 'full' ? ' selected' : ''}>the full analyzer tag string</option></select></label>
+      <label class="ci-inline" title="Off by default. Proposes MISC GTtags=… (the analyzer's tags after the lemma, comma-separated, POS tag left out, variant tag included) for the reading a token is based on. An existing different GTtags is never replaced without your confirmation.">
+        <input type="checkbox" data-role="record-tags" ${this.service.exportOptions(this.currentId).recordTags ? 'checked' : ''}> also propose <code>GTtags=</code> in MISC (the analyzer's tag readout)</label></p>`;
   }
 
   async _refreshAnalyzerInfo() {
@@ -283,13 +285,16 @@ export class ConlluImportPanel {
     const edited = this.service.isEdited(this.currentId, sent.index);
     const rows = sent.lines.map((line, lineIdx) => ({ line, lineIdx })).filter((r) => r.line.kind === 'token' || r.line.kind === 'mwt' || r.line.kind === 'malformed' || r.line.kind === 'empty');
     const fields = [...this.suggestions.values()].filter((f) => f.sentIndex === sent.index);
-    const byToken = new Map(fields.map((f) => [`${f.lineIdx}:${f.column}`, f]));
+    const byToken = new Map(); // `${lineIdx}:${column}` -> proposals (MISC can hold a gloss and a GTtags proposal)
+    for (const f of fields) { const k = `${f.lineIdx}:${f.column}`; byToken.set(k, [...(byToken.get(k) || []), f]); }
     const readingOf = new Map(); // lineIdx -> { reading, needsChoice }
     for (const f of fields) if (f.reading && (f.reading.alternatives || f.reading.choice) && !readingOf.has(f.lineIdx)) readingOf.set(f.lineIdx, f);
     const overrides = this.service.overrides(this.currentId)[sent.index];
-    const needsReading = ['lemma', 'upos', 'xpos', 'feats'].some((c) => this.columns.has(c));
-    // the XPOS cell hosts the reading dropdown, so it is shown whenever an analyzer-based column is selected
-    const shown = ENHANCE_COLUMNS.filter((c) => this.columns.has(c) || (c === 'xpos' && needsReading));
+    const recordTags = this.service.exportOptions(this.currentId).recordTags;
+    const needsReading = recordTags || ['lemma', 'upos', 'xpos', 'feats'].some((c) => this.columns.has(c));
+    // the XPOS cell hosts the reading dropdown, so it is shown whenever an analyzer-based column is selected;
+    // MISC is shown when GTtags proposals are on
+    const shown = ENHANCE_COLUMNS.filter((c) => this.columns.has(c) || (c === 'xpos' && needsReading) || (c === 'misc' && recordTags));
     const showLemma = !this.columns.has('lemma');
     const width = 2 + (showLemma ? 1 : 0) + shown.length;
 
@@ -306,13 +311,13 @@ export class ConlluImportPanel {
       }
       const now = this.service.workingCols(this.currentId, sent.index, lineIdx);
       const cells = shown.map((c) => {
-        const f = byToken.get(`${lineIdx}:${c}`);
+        const fs = byToken.get(`${lineIdx}:${c}`) || [];
         const changed = c === 'misc' ? Boolean(overrides && overrides.misc && overrides.misc[lineIdx])
           : Boolean(overrides && overrides.cells && overrides.cells[lineIdx] && overrides.cells[lineIdx][c]);
         let current = now[COLUMN_INDEX[c]];
-        if (c === 'misc') current = current.split('|').filter((x) => /^gloss[[_]/i.test(x)).join(' ') || '—';
+        if (c === 'misc') current = current.split('|').filter((x) => /^(gloss[[_]|GTtags)/i.test(x)).join(' ') || '—';
         const select = c === 'xpos' && readingOf.has(lineIdx) ? this.renderReadingSelect(sent.index, lineIdx, readingOf.get(lineIdx)) : '';
-        return `<td class="${changed ? 'ci-changed' : ''}"><div class="ci-old"><code>${breakable(current)}</code></div>${select}${f ? this.renderProposal(f) : ''}</td>`;
+        return `<td class="${changed ? 'ci-changed' : ''}"><div class="ci-old"><code>${breakable(current)}</code></div>${select}${fs.map((f) => this.renderProposal(f)).join('')}</td>`;
       }).join('');
       const picker = '';
       const focus = lineIdx === this.focusLine ? ' class="ci-focus"' : '';
@@ -380,7 +385,7 @@ export class ConlluImportPanel {
     const r = f.reading;
     const data = `data-role="reading-pick" data-sent="${sentIndex}" data-line="${lineIdx}"`;
     const nDefault = r.candidates.filter((c) => c.inDefault).length;
-    const label = (c) => `${c.tagString} · ${c.lemma} · ${c.upos} · ${c.feats}`;
+    const label = (c) => `${c.variant ? `[v${c.variant}] ` : ''}${c.tagString} · ${c.lemma} · ${c.upos} · ${c.feats}`;
     const option = (c) => `<option value="${esc(c.raw)}"${r.choice === c.raw ? ' selected' : ''} title="${esc(c.raw)}">${esc(label(c))}${c.inDefault ? '  ✓ default' : ''}</option>`;
     const plain = r.candidates.filter((c) => c.group === 'plain');
     const other = r.candidates.filter((c) => c.group === 'other');
@@ -469,7 +474,7 @@ export class ConlluImportPanel {
 
   /** One proposal inside a cell: old value is shown above it; a tick accepts it. */
   renderProposal(f) {
-    const key = `${f.sentIndex}:${f.lineIdx}:${f.column}`;
+    const key = fieldKey(f);
     const tip = esc(`${f.source}${f.note ? ` — ${f.note}` : ''}`);
     if (f.status === 'none') return '<div class="ci-muted" title="no source for this token">no source</div>';
     if (f.status === 'same') return `<div class="ci-muted" title="${tip}">✓ already there${f.column === 'misc' && f.note ? ' (segmented)' : ''}</div>`;
@@ -588,9 +593,12 @@ export class ConlluImportPanel {
         this.suggestions.clear();
         this.fileSummary = null;
         this.render();
-      } else if (role === 'export-analysis') {
-        await this.service.setExportOption(this.currentId, 'recordAnalysis', el.checked);
-        this.showToast(el.checked ? 'Tokens whose values come from a reading you chose will carry Analysis=… in the exported file.' : 'The chosen analysis is not written to the exported file.', 'info');
+      } else if (role === 'record-tags') {
+        await this.service.setExportOption(this.currentId, 'recordTags', el.checked);
+        this.suggestions.clear();
+        this.fileSummary = null;
+        this.render();
+        this.showToast(el.checked ? 'GTtags= (the analyzer\'s tag readout) will be proposed in MISC for tokens based on one reading. Run Suggest.' : 'GTtags= is not proposed.', 'info');
       } else if (role === 'export-uncertainty') {
         await this.service.setExportOption(this.currentId, 'recordUncertainty', el.checked);
         this.showToast(el.checked ? 'The exported file will also carry LemmaStatus= and AltLemma= in MISC for tokens you marked.' : 'Uncertain lemmas are not written to the exported file.', 'info');
@@ -675,7 +683,7 @@ export class ConlluImportPanel {
   _remember(list) {
     for (const f of list) {
       f.checked = f.status === 'fill' && !f.needsConfirm && !f.needsChoice; // changes to existing values, new pairs and tokens needing a reading choice are never pre-checked
-      this.suggestions.set(`${f.sentIndex}:${f.lineIdx}:${f.column}`, f);
+      this.suggestions.set(fieldKey(f), f);
     }
   }
 
@@ -685,7 +693,7 @@ export class ConlluImportPanel {
 
   /** Loads the analyzer for the text language when an analyzer-based column is selected; says so if there is none. */
   async _prepare() {
-    const needs = ['lemma', 'upos', 'xpos', 'feats'].some((c) => this.columns.has(c));
+    const needs = this.service.exportOptions(this.currentId).recordTags || ['lemma', 'upos', 'xpos', 'feats'].some((c) => this.columns.has(c));
     const lang = this.srcLang || this.getSrcLang() || 'apu';
     if (needs && await this.service.prepareLanguage(lang)) { this.analyzerInfo = await this.service.analyzerInfo(lang); return; }
     if (!needs) return;

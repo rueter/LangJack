@@ -130,6 +130,15 @@ export const TAG_TO_FEATS = {
   'Opt': { feature: 'Mood', value: 'Opt' },
   'Pot': { feature: 'Mood', value: 'Pot' },
 
+  // Pronoun type
+  'Dem': { feature: 'PronType', value: 'Dem' },
+  'Interr': { feature: 'PronType', value: 'Int' },
+  'Pers': { feature: 'PronType', value: 'Prs' },
+
+  // Verb form
+  'Der/NomAct': { feature: 'VerbForm', value: 'Vnoun' },
+  'NomAct': { feature: 'VerbForm', value: 'Vnoun' },
+
   // Voice
   'Act': { feature: 'Voice', value: 'Act' },
   'Pass': { feature: 'Voice', value: 'Pass' },
@@ -200,6 +209,18 @@ export const TAG_TO_FEATS = {
   // Orthographical / Typographical Variation (keyboard accommodation & dialect variance)
   'Err/Orth': { feature: 'Typo', value: 'Yes' },
   'SplRlx': { feature: 'Typo', value: 'Yes' },
+};
+
+/**
+ * GiellaLT variant tags (+v1, +v2, ... +v25) say which variant of a word an analysis is. They are not
+ * Feature=Value pairs: v1 comes first, but every variant is allowed. Their place is the MISC column
+ * (GTtags=..., the whole tag readout). Derivation tags (Der) likewise give no feature of their own.
+ */
+export const isVariantTag = (tag) => /^v\d+$/.test(tag);
+/** The variant number of a tag list (v1 -> 1), or null when the analysis carries no variant tag. */
+export const variantNumber = (tags) => {
+  const tag = (tags || []).find(isVariantTag);
+  return tag ? Number(tag.slice(1)) : null;
 };
 
 /**
