@@ -4,7 +4,8 @@ import {
   toVerddPos, newRow, draftsFromSentences, validateRow, rowToPairPayload,
   homoState, nextHomoId, checkRow, blockingReasons, sendRows,
   loadVerddConfig, saveVerddConfig, describeCounts, describeMerge,
-  isUndetermined, tidyHeadword, mergeVerdict, findTwins, describeById, findEditCollision, describeSplit
+  isUndetermined, tidyHeadword, mergeVerdict, findTwins, describeById, findEditCollision, describeSplit,
+  signInToVerdd, describeAccess
 } from '../js/services/verdd-api-service.js';
 
 // A fetch stand-in: routes are matched by "METHOD /path" and may be a value or a function.
@@ -340,5 +341,39 @@ assert.deepStrictEqual(describeSplit({ moved: { relations: 2, mirror_relations: 
   'The new entry starts unapproved.'
 ]);
 console.log('✓ headword tidy, merge rules, twins, collisions, split');
+
+console.log('=== 11. Signing in with Ve\'rdd credentials ===');
+{
+  const access = { restricted: true, pairs: [['fin', 'sms']] };
+  const { fetchImpl, calls } = mockFetch({
+    'POST /verdd/api/v1/auth/login/': (call) => call.body.password === 'good'
+      ? { body: { token: 'T0K', username: 'helper', is_staff: true, is_superuser: false, access } }
+      : call.body.password === 'slow' ? { status: 429, body: { detail: 'Request was throttled.' } }
+      : call.body.username === 'reader' ? { status: 403, body: { detail: 'This account is not a staff account.' } }
+      : { status: 400, body: { non_field_errors: ['Wrong username or password.'] } }
+  });
+  const ok = await signInToVerdd({ baseUrl: 'verdd.example.org/verdd/', username: ' helper ', password: 'good', fetchImpl });
+  assert.deepStrictEqual(ok, { token: 'T0K', username: 'helper', is_staff: true, is_superuser: false, access });
+  assert.deepStrictEqual(calls[0].body, { username: 'helper', password: 'good' });
+  assert.strictEqual(calls[0].init.credentials, 'omit');
+  assert.strictEqual(calls[0].headers.Authorization, undefined, 'no token is sent to the sign-in');
+  await assert.rejects(signInToVerdd({ baseUrl: 'verdd.example.org/verdd', username: 'helper', password: 'bad', fetchImpl }), /Wrong username or password/);
+  await assert.rejects(signInToVerdd({ baseUrl: 'verdd.example.org/verdd', username: 'helper', password: 'slow', fetchImpl }), /Too many sign-in attempts/);
+  await assert.rejects(signInToVerdd({ baseUrl: 'verdd.example.org/verdd', username: 'reader', password: 'x', fetchImpl }), /not a staff account/);
+  await assert.rejects(signInToVerdd({ baseUrl: '', username: 'a', password: 'b', fetchImpl }), /address/);
+  await assert.rejects(signInToVerdd({ baseUrl: 'verdd.example.org/verdd', username: '', password: 'b', fetchImpl }), /username/);
+  await assert.rejects(signInToVerdd({ baseUrl: 'verdd.example.org/other', username: 'a', password: 'b', fetchImpl }), /No Ve'rdd sign-in/, 'an old server without the endpoint');
+  await assert.rejects(signInToVerdd({ baseUrl: 'verdd.example.org/verdd', username: 'a', password: 'b', fetchImpl: async () => { throw new TypeError('x'); } }), /Cannot reach/);
+
+  assert.strictEqual(describeAccess({ restricted: false, pairs: [] }), 'all languages');
+  assert.strictEqual(describeAccess(undefined), 'all languages');
+  assert.strictEqual(describeAccess({ restricted: true, pairs: [['fin', 'sms'], ['myv', 'myv']] }), 'fin ↔ sms; myv');
+
+  const refused = apiWith({ 'GET /verdd/api/v1/lexemes/5/': { status: 403, body: { detail: 'You do not have access to language myv.' } } });
+  await assert.rejects(refused.api.getLexeme(5), /do not have access to language myv/);
+  const plain = apiWith({ 'GET /verdd/api/v1/lexemes/5/': { status: 403, body: { detail: 'You do not have permission to perform this action.' } } });
+  await assert.rejects(plain.api.getLexeme(5), /must be staff/);
+}
+console.log('✓ sign-in, access description, access errors');
 
 console.log('\nAll Ve\'rdd API service tests passed.');

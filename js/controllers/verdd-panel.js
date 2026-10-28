@@ -4,7 +4,7 @@
  * only draws the panel and wires events.
  */
 import {
-  VerddApi, VERDD_POS_FALLBACK, POS_UNDETERMINED, describeApiError, ensureOriginPermission, loadVerddConfig,
+  VerddApi, signInToVerdd, describeAccess, VERDD_POS_FALLBACK, POS_UNDETERMINED, describeApiError, ensureOriginPermission, loadVerddConfig,
   normalizeBaseUrl, saveVerddConfig, newRow, draftsFromSentences, blockingReasons, homoState,
   nextHomoId, checkRow, sendRows, rowToPairPayload, validateRow, describeCounts, describeMerge,
   describeSplit, isUndetermined, tidyHeadword, mergeVerdict, findTwins, describeById, findEditCollision
@@ -66,6 +66,7 @@ export class VerddPanel {
     this.root.addEventListener('submit', (event) => {
       event.preventDefault();
       if (event.target.dataset.form === 'merge-find') this.loadMergeCandidates(false);
+      else if (event.target.dataset.form === 'sign-in') this.signIn();
       else this.search(false);
     });
     this.render();
@@ -135,20 +136,85 @@ export class VerddPanel {
   // ------------------------------------------------------------------------------------
 
   renderConnection() {
+    const signedIn = Boolean(this.config.token);
     this.view('connection').innerHTML = `
       <div class="vw-form">
         <label>Ve'rdd address
           <input type="url" id="vwBaseUrl" placeholder="https://www.example.org/verdd" value="${esc(this.config.baseUrl)}" autocomplete="off">
         </label>
-        <label>API token
-          <input type="password" id="vwToken" placeholder="Created with: python manage.py create_api_token USER" value="${esc(this.config.token)}" autocomplete="off">
-        </label>
-        <p class="vw-hint">The address is the Ve'rdd root, without <code>/api/v1</code>. The token is kept in this browser only and is sent to that address alone. The account must be a Ve'rdd staff user.</p>
-        <div class="vw-actions">
-          <button class="btn btn-primary" data-action="save-connection">Save &amp; test connection</button>
-        </div>
+        <p class="vw-hint">The address is the Ve'rdd root, without <code>/api/v1</code>. The account must be a Ve'rdd staff user. Your sign-in is kept in this browser only and is sent to that address alone.</p>
+        <form data-form="sign-in" class="vw-form">
+          <h4>Sign in with your Ve'rdd account</h4>
+          <label>Username or e-mail address
+            <input type="text" id="vwUser" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(this.signedInAs || '')}">
+          </label>
+          <label>Password
+            <input type="password" id="vwPassword" autocomplete="current-password">
+          </label>
+          <div class="vw-actions">
+            <button class="btn btn-primary" type="submit">Sign in</button>
+            ${signedIn ? '<button class="btn btn-secondary" type="button" data-action="sign-out">Sign out on this device</button>' : ''}
+          </div>
+          <p class="vw-hint">The password is checked by Ve'rdd and is never stored here; Ve'rdd answers with a token for your account, which is what is kept.</p>
+        </form>
+        <details ${signedIn && !this.signedInAs ? 'open' : ''}>
+          <summary>Use an API token instead</summary>
+          <label>API token
+            <input type="password" id="vwToken" placeholder="From the Ve'rdd administrator" value="${esc(this.config.token)}" autocomplete="off">
+          </label>
+          <div class="vw-actions">
+            <button class="btn btn-secondary" data-action="save-connection">Save &amp; test token</button>
+          </div>
+        </details>
         <div id="vwConnStatus" class="vw-hint" role="status"></div>
       </div>`;
+  }
+
+  /** The password sign-in: Ve'rdd checks it and hands back the account's token, which is what gets stored. */
+  async signIn() {
+    const baseUrl = normalizeBaseUrl(this.root.querySelector('#vwBaseUrl').value);
+    const username = this.root.querySelector('#vwUser').value.trim();
+    const passwordInput = this.root.querySelector('#vwPassword');
+    const status = this.root.querySelector('#vwConnStatus');
+    if (!baseUrl || !username || !passwordInput.value) {
+      status.textContent = "Enter the address, your username (or e-mail address) and your password.";
+      return;
+    }
+    // Must happen straight from the click or Enter key, before any other await.
+    if (!(await ensureOriginPermission(baseUrl))) {
+      status.textContent = 'LangJack needs permission to contact that address. Press Sign in again and allow it.';
+      return;
+    }
+    status.textContent = 'Signing in…';
+    try {
+      const result = await signInToVerdd({ baseUrl, username, password: passwordInput.value });
+      passwordInput.value = '';
+      await saveVerddConfig(this.store, { baseUrl, token: result.token });
+      this.config = { baseUrl, token: result.token };
+      this.api = new VerddApi(this.config);
+      this.signedInAs = result.username;
+      const me = await this.refreshVocabulary();
+      this.renderConnection();
+      this.root.querySelector('#vwConnStatus').textContent = `Signed in to ${baseUrl} as ${me.username}. You can work on: ${describeAccess(me.access)}.`;
+      this.showToast("Signed in to Ve'rdd.", 'success');
+    } catch (error) {
+      passwordInput.value = '';
+      this.onStatus('Sign-in failed', 'error');
+      status.textContent = describeApiError(error);
+    }
+  }
+
+  /** Forget the token on this device. The account's token on the server is untouched (an administrator can delete it there). */
+  async signOut() {
+    await saveVerddConfig(this.store, { baseUrl: this.config.baseUrl, token: '' });
+    this.config = { baseUrl: this.config.baseUrl, token: '' };
+    this.api = new VerddApi(this.config);
+    this.signedInAs = '';
+    this.languages = [];
+    this.refreshDatalists();
+    this.renderConnection();
+    this.onStatus('Not connected', 'idle');
+    this.root.querySelector('#vwConnStatus').textContent = 'Signed out on this device.';
   }
 
   async saveConnection() {
@@ -173,7 +239,7 @@ export class VerddPanel {
     status.textContent = 'Testing…';
     try {
       const me = await this.refreshVocabulary();
-      status.textContent = `Connected to ${baseUrl} as ${me.username}. ${this.languages.length} languages, ${this.posList.length} parts of speech.`;
+      status.textContent = `Connected to ${baseUrl} as ${me.username}. You can work on: ${describeAccess(me.access)}. ${this.languages.length} languages, ${this.posList.length} parts of speech.`;
       this.showToast("Connected to Ve'rdd.", 'success');
     } catch (error) {
       this.onStatus('Connection failed', 'error');
@@ -186,7 +252,8 @@ export class VerddPanel {
     this.languages = languages;
     if (pos.length) this.posList = [...new Set([...pos, ...VERDD_POS_FALLBACK])].sort();
     this.refreshDatalists();
-    this.onStatus(`Connected: ${me.username}`, 'ok');
+    this.signedInAs = me.username;
+    this.onStatus(`Connected: ${me.username}${me.access?.restricted ? ` (${describeAccess(me.access)})` : ''}`, 'ok');
     return me;
   }
 
@@ -1171,6 +1238,7 @@ export class VerddPanel {
       'save-example': () => this.saveExample(id),
       'delete-example': () => this.deleteExample(id),
       'add-example': () => this.addExample(id),
+      'sign-out': () => this.signOut(),
       'merge-find': () => this.loadMergeCandidates(false),
       'merge-more': () => this.loadMergeCandidates(true),
       'merge-open': () => { this.setTab('browse'); this.openLexeme(Number(el.dataset.id)); },

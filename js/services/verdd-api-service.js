@@ -95,6 +95,43 @@ export async function saveVerddConfig(store, { baseUrl, token }) {
 // API client
 // ---------------------------------------------------------------------------------------
 
+/**
+ * Sign in with a Ve'rdd username (or e-mail address) and password. The server answers with the account's API
+ * token, which is what LangJack keeps; the password is sent once, to that server only, and never stored.
+ * @returns {Promise<{ token: string, username: string, is_staff: boolean, is_superuser: boolean, access: { restricted: boolean, pairs: string[][] } }>}
+ */
+export async function signInToVerdd({ baseUrl, username, password, fetchImpl = (...args) => globalThis.fetch(...args) }) {
+  const root = normalizeBaseUrl(baseUrl);
+  if (!root) throw new VerddApiError(0, "Enter the Ve'rdd address first.");
+  if (!String(username || '').trim() || !password) throw new VerddApiError(0, 'Enter your username (or e-mail address) and password.');
+  let response;
+  try {
+    response = await fetchImpl(`${root}/api/v1/auth/login/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      credentials: 'omit',
+      body: JSON.stringify({ username: String(username).trim(), password })
+    });
+  } catch {
+    throw new VerddApiError(0, `Cannot reach ${root}. Check the address, your connection, and that LangJack was granted access to that site.`);
+  }
+  const text = await response.text();
+  let data = null;
+  if (text) { try { data = JSON.parse(text); } catch { data = text; } }
+  if (response.ok) return data;
+  const message = response.status === 429 ? 'Too many sign-in attempts. Wait a minute and try again.'
+    : response.status === 404 ? `No Ve'rdd sign-in at ${root}. Use the Ve'rdd root address, for example https://host/verdd, and make sure the server has been updated.`
+    : response.status >= 500 ? `Ve'rdd reported a server error (${response.status}).`
+    : describeApiError(data) || `Sign-in failed (${response.status}).`;
+  throw new VerddApiError(response.status, message, data);
+}
+
+/** The account's reach as one sentence: "all languages" or "sms ↔ fin; koi". */
+export function describeAccess(access) {
+  if (!access || !access.restricted) return 'all languages';
+  return access.pairs.map(([a, b]) => (a === b ? a : `${a} ↔ ${b}`)).join('; ');
+}
+
 export class VerddApiError extends Error {
   constructor(status, message, data = null) {
     super(message);
@@ -176,7 +213,10 @@ export class VerddApi {
 
   statusMessage(status, data) {
     if (status === 401) return "Ve'rdd rejected the API token.";
-    if (status === 403) return "This Ve'rdd account has no editing rights (it must be staff).";
+    if (status === 403) {
+      const detail = typeof data?.detail === 'string' ? data.detail : '';
+      return /access to language/.test(detail) ? detail : "This Ve'rdd account has no editing rights (it must be staff).";
+    }
     if (status === 404 && typeof data === 'string') {
       return `No Ve'rdd API at ${this.baseUrl}. Use the Ve'rdd root address, for example https://host/verdd.`;
     }
