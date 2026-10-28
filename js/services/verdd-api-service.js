@@ -293,8 +293,9 @@ export class VerddApi {
    * Move the chosen relations and examples of an entry onto a new entry of the same language
    * (the inverse of a merge). `fields` may set lexeme, pos and homoId of the new entry.
    */
-  splitLexeme(id, { relations = [], examples = [], dryRun = false, ...fields } = {}) {
+  splitLexeme(id, { relations = [], examples = [], dryRun = false, copy = false, ...fields } = {}) {
     const body = { relations, examples, dry_run: dryRun };
+    if (copy) body.copy = true; // duplicate the chosen translations and examples instead of moving them
     Object.entries(fields).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') body[key] = value;
     });
@@ -373,6 +374,9 @@ export function describeSplit(report) {
   const lines = [];
   Object.entries(report.moved || {}).forEach(([key, n]) => {
     if (n > 0 && SPLIT_LABELS[key]) lines.push(`Moves ${plural(n, SPLIT_LABELS[key])} to the new entry.`);
+  });
+  Object.entries(report.copied || {}).forEach(([key, n]) => {
+    if (n > 0 && SPLIT_LABELS[key]) lines.push(`Copies ${plural(n, SPLIT_LABELS[key])} to the new entry; the original entry keeps its own.`);
   });
   lines.push('Forms, stems and metadata stay on the original entry.');
   (report.notes || []).forEach(note => lines.push(note));

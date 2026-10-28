@@ -340,6 +340,20 @@ assert.deepStrictEqual(describeSplit({ moved: { relations: 2, mirror_relations: 
   'The original entry becomes unapproved so it is reviewed again.',
   'The new entry starts unapproved.'
 ]);
+{
+  const copied = describeSplit({ moved: {}, copied: { relations: 2, examples: 1 }, notes: [], source_unapproved: false });
+  assert.deepStrictEqual(copied.slice(0, 2), [
+    'Copies 2 relations to the new entry; the original entry keeps its own.',
+    'Copies 1 example to the new entry; the original entry keeps its own.'
+  ]);
+  assert.ok(!copied.some(line => /unapproved so/.test(line) && /original/.test(line)), 'copying leaves the original approved');
+  const calls = [];
+  const copyApi = new VerddApi({ baseUrl: 'verdd.example.org/verdd', token: 't', fetchImpl: async (url, init) => { calls.push(JSON.parse(init.body)); return { ok: true, status: 200, text: async () => '{}' }; } });
+  await copyApi.splitLexeme(5, { relations: [1, 2], lexeme: 'glucken', copy: true, dryRun: true });
+  await copyApi.splitLexeme(5, { relations: [1] });
+  assert.deepStrictEqual(calls[0], { relations: [1, 2], examples: [], dry_run: true, copy: true, lexeme: 'glucken' });
+  assert.strictEqual('copy' in calls[1], false, 'a plain split sends no copy flag');
+}
 console.log('✓ headword tidy, merge rules, twins, collisions, split');
 
 console.log('=== 11. Signing in with Ve\'rdd credentials ===');

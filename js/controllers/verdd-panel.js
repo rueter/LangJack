@@ -894,6 +894,7 @@ export class VerddPanel {
           <label>New homonym <input data-split="homoId" type="number" min="0" placeholder="next free"></label>
         </div>
         <div class="vw-picks">${rows.join('') || '<div class="vw-empty">This entry has no translations or examples to move.</div>'}</div>
+        <label class="vw-pick"><input type="checkbox" data-split="copy"> <span><strong>Copy instead of move</strong>: the ticked translations and examples stay on this entry too, so both entries have the same ones (for example when a headword written gluck(s)en becomes glucksen and glucken).</span></label>
         <div class="vw-actions"><button class="btn btn-secondary btn-sm" data-action="split-preview">Preview split</button></div>
         <div data-slot="browse-split"></div>
       </details>`;
@@ -908,7 +909,8 @@ export class VerddPanel {
       examples: checked('data-split-ex'),
       lexeme: field('lexeme'),
       pos: field('pos'),
-      homoId: field('homoId') === '' ? undefined : Number(field('homoId'))
+      homoId: field('homoId') === '' ? undefined : Number(field('homoId')),
+      copy: Boolean(root.querySelector('[data-split="copy"]')?.checked)
     };
   }
 
@@ -917,7 +919,7 @@ export class VerddPanel {
     const request = this.splitRequest();
     const newHeadword = request.lexeme && request.lexeme !== detail.lexeme.lexeme;
     if (!request.relations.length && !request.examples.length && !newHeadword) {
-      return this.showToast('Type a new headword, or tick at least one translation or example to move to the new entry.', 'error');
+      return this.showToast('Type a new headword, or tick at least one translation or example to move (or copy) to the new entry.', 'error');
     }
     await this.guard(async () => {
       const report = await this.api.splitLexeme(detail.lexeme.id, { ...request, dryRun: true });
