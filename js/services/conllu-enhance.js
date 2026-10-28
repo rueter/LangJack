@@ -184,16 +184,16 @@ export function readingTags(r) {
   return sections.flatMap((sec) => sec.split('+').filter(Boolean).slice(1));
 }
 
-/** Derivation (Der, Der/...) anywhere among the tags, whatever their order. */
+/** Derivation (Der, Der/...) anywhere among the tags. */
 export const isDerivedReading = (r) => readingTags(r).some((t) => t === 'Der' || t.startsWith('Der/'));
 /** Compounding (Cmp, Cmp/..., or a # boundary) anywhere in the analysis. */
 export const isCompoundReading = (r) => readingTags(r).some((t) => t === 'Cmp' || t.startsWith('Cmp/')) || /#/.test(r.raw || '');
 
-/** Identity of a reading independent of tag order: lemma plus the SET of tags (a variant tag makes it a different reading). */
-export const readingKey = (r) => `${stripGuessTags(r.lemma || '')}\u0000${[...new Set(readingTags(r))].sort().join('+')}`;
+/** Identity of a reading: the lemma plus its tags IN ORDER (tag order carries meaning; a variant tag makes it a different reading). */
+export const readingKey = (r) => `${stripGuessTags(r.lemma || '')}\u0000${readingTags(r).join('+')}`;
 
-/** The reading without its variant tag (v1, v2, ...): readings with the same substance give the same FEATS and POS. */
-const substanceKey = (r) => `${stripGuessTags(r.lemma || '')}\u0000${[...new Set(readingTags(r).filter((t) => !isVariantTag(t)))].sort().join('+')}`;
+/** The reading without its variant tag (v1, v2, ...): readings with the same substance (same tags in the same order) give the same FEATS and POS. */
+const substanceKey = (r) => `${stripGuessTags(r.lemma || '')}\u0000${readingTags(r).filter((t) => !isVariantTag(t)).join('+')}`;
 
 /** GiellaLT variant number of a reading (v1 -> 1), or null when it has no variant tag. */
 export const readingVariant = (r) => variantNumber(readingTags(r));
@@ -201,22 +201,18 @@ export const readingVariant = (r) => variantNumber(readingTags(r));
 const variantRank = (r) => readingVariant(r) ?? 1;
 
 /**
- * The tag readout in the LangJack / GiellaLT `GTtags=` convention of MISC: every tag after the lemma stem except the
- * reading's POS tag itself, separated by commas, in the order the analyzer emitted them (a variant tag, which comes
- * first, is included). Example: ywa+Pron+Pers+Sg3+Msc+Nom -> "Pers,Sg3,Msc,Nom".
+ * The tag readout in the LangJack / GiellaLT `GTtags=` convention of MISC: the ENTIRE readout, every tag after the
+ * lemma stem including the POS tag, separated by commas, in the order the analyzer emitted them (a variant tag, which
+ * comes first, is included). Examples: ywa+Pron+Pers+Sg3+Msc+Nom -> "Pron,Pers,Sg3,Msc,Nom";
+ * apuka+v1+V+Pred+ScSg3M+Oc3M -> "v1,V,Pred,ScSg3M,Oc3M".
  */
-export function gtTagsOf(r) {
-  const tags = [...readingTags(r)];
-  const at = r.pos ? tags.indexOf(r.pos) : -1;
-  if (at !== -1) tags.splice(at, 1);
-  return tags.join(',');
-}
+export const gtTagsOf = (r) => readingTags(r).join(',');
 
 /**
  * What the analyzer says about a token, looked up by its FORM. The word form is primary: the file's LEMMA is a
  * hypothesis, never a filter. Every reading stays a candidate (`candidates`, in two groups: plain readings first, then
- * derived and compound ones). Readings that differ only in tag order are one reading (same lemma and tag set); its tags
- * are shown as the analyzer emitted them. Nothing here depends on the position of a tag.
+ * derived and compound ones). Tag order carries meaning: readings are identified by lemma plus tags in order, so two
+ * analyses that differ in tag order are two readings (exact duplicates are one), each shown as the analyzer emitted it.
  *
  * The default proposal comes from the plain readings (no Der, no Cmp), or from all readings when there are none; the
  * file's lemma and UPOS then only narrow that pool (stated in `defaultReason`). With several readings left the default
@@ -238,7 +234,7 @@ export function summarizeReadings(readings, row, choice = null) {
   for (const r of readings || []) {
     if (!r || r.isGuessed || !r.lemma) continue;
     const key = readingKey(r);
-    if (seen.has(key)) continue; // the same reading in another tag order
+    if (seen.has(key)) continue; // an exact duplicate: same lemma, same tags in the same order
     seen.add(key);
     usable.push(r);
   }
@@ -291,7 +287,7 @@ export function summarizeReadings(readings, row, choice = null) {
     defaultReason: reasons.join(' and '),
     agree: {
       lemma: same((r) => stripGuessTags(r.lemma)), upos: same((r) => r.upos), xpos: same((r) => r.pos || ''),
-      tagString: same((r) => [...new Set(readingTags(r).filter((t) => !isVariantTag(t)))].sort().join('+'))
+      tagString: same((r) => readingTags(r).filter((t) => !isVariantTag(t)).join('+'))
     }
   };
   const picked = choice ? usable.find((r) => r.raw === choice) : null;

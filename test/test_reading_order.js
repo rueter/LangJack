@@ -1,16 +1,18 @@
 /**
- * Test Suite: reading selection independent of analyzer tag order, grouped dropdown, XPOS from the chosen reading
+ * Test Suite: reading selection with meaningful tag order, grouped XPOS dropdown, variants, GTtags
  * Verifies:
- * 1. The same word analysed in two tag orders (older bundled analyzer vs newer one) gives the same FEATS, the same
- *    default selection and ONE dropdown entry, shown with its tags as the analyzer emitted them.
- * 2. Derivation (Der, Der/...) and compounding (Cmp, Cmp/..., #) are detected as tags wherever they stand.
+ * 1. Tag order carries meaning: two analyses that differ in tag order are two readings and both are listed, each shown
+ *    as the analyzer emitted it; only exact duplicates (same lemma, same tags, same order) are one reading.
+ * 2. Derivation (Der, Der/...) and compounding (Cmp, Cmp/..., #) are detected as tags wherever they stand;
+ *    `Adp` right after the lemma is the adposition POS tag, after another POS tag it is Case=Adp.
  * 3. Plain readings come first and are the default; derived and compound ones stay available in a second group;
  *    an explicit choice (also of a derived reading) always wins and drives LEMMA, UPOS, XPOS and FEATS together.
  * 4. XPOS gets the short POS tag or the full analyzer tag string (as emitted); a non-empty XPOS is never
  *    overwritten silently; readings that disagree propose nothing until the user chooses.
  * 5. GiellaLT variant tags (v1..v25) rank readings without filtering them or making the default ambiguous.
- * 6. GTtags=<tags> (the analyzer's tag readout, comma-separated) is only proposed when the option is on, for a single
- *    reading, and an existing different GTtags is never replaced without confirmation; the old option name still works.
+ * 6. GTtags=<the entire tag readout, POS tag included, comma-separated, in the analyzer's order> is only proposed when
+ *    the option is on, for a single reading, and an existing different GTtags is never replaced without confirmation;
+ *    the old option name still works.
  * 7. Which analyzer build produced the readings can be shown.
  */
 
@@ -28,7 +30,7 @@ import { dictionaryService } from '../js/services/dictionary-service.js';
 console.log('=== Running Tests for Order-Independent Readings and the XPOS Dropdown ===\n');
 
 const R = (raw) => TagMapper.parse(raw);
-// the same word `awinhi` in two tag orders: bundled analyzer (old) and the user's newer build (new)
+// analyses of `awinhi` in two tag orders. Order is meaningful, so these are different readings.
 const OLD = {
   derPx: 'awa+v1+V+Der+Der/NomAct+N+Msc+Sg+PxSg3M+Possd+Nom',
   derNo: 'awa+v1+V+Der+Der/NomAct+N+Msc+Sg+NPossd+Nom',
@@ -44,36 +46,28 @@ const NEW = {
 const row = { lemma: 'awinhi', upos: 'NOUN' };
 
 // --- 1. Tag order ----------------------------------------------------------------------------
-console.log('--- 1. Testing tag-order independence ---');
+console.log('--- 1. Testing that tag order is meaningful ---');
 for (const k of Object.keys(OLD)) {
-  assert.deepStrictEqual(R(OLD[k]).featsMap, R(NEW[k]).featsMap, `${k}: same FEATS for any tag order`);
-  assert.strictEqual(R(OLD[k]).upos, R(NEW[k]).upos, `${k}: same UPOS`);
-  assert.strictEqual(readingKey(R(OLD[k])), readingKey(R(NEW[k])), `${k}: same lemma and tag SET = same reading`);
   assert.notStrictEqual(R(OLD[k]).raw, R(NEW[k]).raw, 'the emitted strings do differ');
+  assert.notStrictEqual(readingKey(R(OLD[k])), readingKey(R(NEW[k])), `${k}: same lemma and tags in another order = a different reading`);
 }
+assert.strictEqual(readingKey(R(OLD.plainPx)), readingKey(R(OLD.plainPx)), 'the same tags in the same order are the same reading');
+assert.strictEqual(summarizeReadings([R(OLD.plainPx), R(OLD.plainPx)], row).candidates.length, 1, 'exact duplicates are one reading');
 const mixed = [R(OLD.derPx), R(NEW.plainPx), R(OLD.plainPx), R(NEW.derPx), R(OLD.plain), R(NEW.derNo)];
 const a = summarizeReadings(mixed, row);
-assert.strictEqual(a.candidates.length, 4, 'reordered duplicates are listed once: 2 plain + 2 derived');
-assert.strictEqual(a.candidates.filter((c) => c.kind === 'plain').length, 2);
+assert.strictEqual(a.candidates.length, 6, 'analyses that differ in tag order are all listed');
+assert.strictEqual(a.candidates.filter((c) => c.kind === 'plain').length, 3, '3 plain, one of them in the other tag order');
+assert.strictEqual(a.candidates.filter((c) => c.kind === 'derived').length, 3);
+assert.strictEqual(a.ambiguous, true, 'several plain readings: needs your choice');
+// each is shown exactly as emitted
+assert.deepStrictEqual(a.candidates.filter((c) => c.kind === 'plain').map((c) => c.raw).sort(), [NEW.plainPx, OLD.plainPx, OLD.plain].sort());
+assert.strictEqual(a.candidates.find((c) => c.raw === NEW.plainPx).tagString, 'N+Msc+Sg+Nom+Possd+PxSg3M', 'tags in the analyzer\'s own order, not sorted');
+assert.strictEqual(a.candidates.find((c) => c.raw === OLD.plainPx).tagString, 'N+Msc+Sg+PxSg3M+Possd+Nom');
+// the input order of the readings changes nothing about which readings exist or are in the default pool
 const reversed = summarizeReadings([...mixed].reverse(), row);
-assert.deepStrictEqual(
-  reversed.candidates.map((c) => [c.lemma, c.kind, c.feats]).sort(),
-  a.candidates.map((c) => [c.lemma, c.kind, c.feats]).sort(), 'same readings whatever order the analyzer returns them');
-const sorted = (m) => [...m].map(([k, v]) => `${k}=${v}`).sort();
-assert.deepStrictEqual(sorted(reversed.feats), sorted(a.feats), 'same default FEATS');
-assert.deepStrictEqual(reversed.candidates.filter((c) => c.inDefault).map((c) => c.lemma), a.candidates.filter((c) => c.inDefault).map((c) => c.lemma), 'same default selection');
-assert.strictEqual(a.ambiguous && reversed.ambiguous, true, 'two plain readings: needs your choice, in either order');
-// tags are shown exactly as the analyzer emitted them (the first emitted wins as the display)
-const plainPxEntry = a.candidates.find((c) => c.kind === 'plain' && c.feats.includes('Person[psor]=3'));
-assert.strictEqual(plainPxEntry.raw, NEW.plainPx, 'first emitted form is shown');
-assert.strictEqual(plainPxEntry.tagString, 'N+Msc+Sg+Nom+Possd+PxSg3M', 'tags in the analyzer\'s own order, not sorted');
-assert.strictEqual(reversed.candidates.find((c) => c.kind === 'plain' && c.feats.includes('Person[psor]=3')).tagString, 'N+Msc+Sg+PxSg3M+Possd+Nom');
-// only the old order: the same
-const onlyOld = summarizeReadings(Object.values(OLD).map(R), row);
-const onlyNew = summarizeReadings(Object.values(NEW).map(R), row);
-assert.deepStrictEqual(sorted(onlyOld.feats), sorted(onlyNew.feats));
-assert.strictEqual(onlyOld.candidates.length, onlyNew.candidates.length);
-console.log('✓ Same FEATS, same default, one dropdown entry per reading, tags shown as emitted');
+assert.deepStrictEqual(reversed.candidates.map((c) => c.raw).sort(), a.candidates.map((c) => c.raw).sort());
+assert.deepStrictEqual(reversed.candidates.filter((c) => c.inDefault).map((c) => c.raw).sort(), a.candidates.filter((c) => c.inDefault).map((c) => c.raw).sort());
+console.log('✓ Different tag order = different readings, each listed as emitted; only exact duplicates merge');
 
 // --- 2. Der / Cmp anywhere ---------------------------------------------------------------------
 console.log('\n--- 2. Testing derivation and compound detection ---');
@@ -88,7 +82,15 @@ assert.strictEqual(isCompoundReading(stub(['N', 'Sg', 'Cmp/SplitR'])), true, 'Cm
 assert.strictEqual(isCompoundReading({ raw: 'ab#cd+N+Sg', lemma: 'abcd', upos: 'NOUN', featsMap: {} }), true, '# boundary');
 assert.strictEqual(isCompoundReading(stub(['N', 'Sg'])), false);
 assert.deepStrictEqual(readingTags({ raw: 'ab#cd+N+Sg', lemma: 'abcd' }), ['N', 'Sg'], 'tags from the raw string when no tag list is given');
-console.log('✓ Der / Der/... and Cmp / Cmp/... found by tag, not by position');
+// Adp: the POS tag straight after the lemma, a case after another POS tag (order carries meaning)
+const adpPos = R('vahel+Adp');
+assert.strictEqual(adpPos.upos, 'ADP');
+assert.strictEqual(adpPos.featsMap.Case, undefined, 'vahel+Adp: the adposition, no case');
+const adpCase = R('ywa+Pron+Pers+Adp');
+assert.strictEqual(adpCase.upos, 'PRON', 'a pronoun');
+assert.strictEqual(adpCase.featsMap.Case, 'Adp', 'with Case=Adp: the form used before postpositions');
+assert.strictEqual(adpCase.featsMap.PronType, 'Prs');
+console.log('✓ Der / Der/... and Cmp / Cmp/... found by tag, not by position; Adp as POS or as case by its place');
 
 // --- 3. Groups, default, explicit choice ----------------------------------------------------------
 console.log('\n--- 3. Testing groups, default and an explicit choice ---');
@@ -213,15 +215,18 @@ console.log('✓ XPOS short / full from the reading; no silent overwrite');
 
 // --- 5b. GTtags ---------------------------------------------------------------------------------------------
 console.log('\n--- 5. Testing GTtags (the analyzer\'s tag readout) in MISC ---');
-// the convention of the Apurinã file: tags after the lemma except the POS tag, comma-separated, analyzer order
-assert.strictEqual(gtTagsOf(R('ywa+Pron+Pers+Sg3+Msc+Nom')), 'Pers,Sg3,Msc,Nom');
-assert.strictEqual(gtTagsOf(R('iãkyny+N+Msc+Sg+PxSg3M+Com')), 'Msc,Sg,PxSg3M,Com');
-assert.strictEqual(gtTagsOf(R('apuka+V+Pred+ScSg3M+Oc3M')), 'Pred,ScSg3M,Oc3M');
-assert.strictEqual(gtTagsOf(R(OLD.derPx)), 'v1,V,Der,Der/NomAct,Msc,Sg,PxSg3M,Possd,Nom', 'variant first, derivation history kept, the final POS tag N left out');
-assert.strictEqual(gtTagsOf(R(NEW.derPx)), 'v1,V,Der,Der/NomAct,Msc,Sg,Nom,Possd,PxSg3M', 'exactly the analyzer\'s order, not sorted');
-assert.strictEqual(gtTagsOf(R(NEW.plainPx)), 'Msc,Sg,Nom,Possd,PxSg3M');
-assert.strictEqual(summarizeReadings([R(OLD.plain)], row).gtTags, 'Msc,Sg,Possd,Nom');
-assert.strictEqual(summarizeReadings([v(2), v(1)], row).gtTags, 'v1,Msc,Sg,Nom', 'default reading: the variant tag is included');
+// the convention of the Apurinã file: the ENTIRE readout, POS tag included, comma-separated, in the analyzer's order
+assert.strictEqual(gtTagsOf(R('ywa+Pron+Pers+Sg3+Msc+Nom')), 'Pron,Pers,Sg3,Msc,Nom');
+assert.strictEqual(gtTagsOf(R('ywa+Pron+Pers+Adp')), 'Pron,Pers,Adp', 'Adp after another POS tag is just a tag of the readout');
+assert.strictEqual(gtTagsOf(R('vahel+Adp')), 'Adp');
+assert.strictEqual(gtTagsOf(R('iãkyny+N+Msc+Sg+PxSg3M+Com')), 'N,Msc,Sg,PxSg3M,Com');
+assert.strictEqual(gtTagsOf(R('apuka+V+Pred+ScSg3M+Oc3M')), 'V,Pred,ScSg3M,Oc3M');
+assert.strictEqual(gtTagsOf(R('apuka+v1+V+Pred+ScSg3M+Oc3M')), 'v1,V,Pred,ScSg3M,Oc3M', 'the variant tag comes first');
+assert.strictEqual(gtTagsOf(R(OLD.derPx)), 'v1,V,Der,Der/NomAct,N,Msc,Sg,PxSg3M,Possd,Nom', 'every tag: variant, the stem\'s POS V, the derivation, the final POS N');
+assert.strictEqual(gtTagsOf(R(NEW.derPx)), 'v1,V,Der,Der/NomAct,N,Msc,Sg,Nom,Possd,PxSg3M', 'exactly the analyzer\'s order, not sorted');
+assert.strictEqual(gtTagsOf(R(NEW.plainPx)), 'N,Msc,Sg,Nom,Possd,PxSg3M');
+assert.strictEqual(summarizeReadings([R(OLD.plain)], row).gtTags, 'N,Msc,Sg,Possd,Nom');
+assert.strictEqual(summarizeReadings([v(2), v(1)], row).gtTags, 'v1,N,Msc,Sg,Nom', 'default reading: the variant tag is included');
 
 const GT = [
   '# sent_id = G-1', '# text = Awinhi Amary akyru.',
@@ -258,14 +263,15 @@ await svc.setReadingChoice(gid, 0, GL(3), akCands[0].raw);
 gf = svc.suggestEnhancements(gid, 0, gopts);
 const g1 = gt(gf, 'awinhi');
 assert.deepStrictEqual([g1.from, g1.to, g1.status], [null, pick.gtTags, 'fill'], 'empty: can be filled');
-assert.strictEqual(pick.gtTags, 'Msc,Sg,PxSg3M,Possd,Nom');
+assert.strictEqual(pick.gtTags, 'N,Msc,Sg,PxSg3M,Possd,Nom', 'the entire readout, POS tag included');
 // no silent overwrite of an existing different GTtags; equal is "same"; untouched rows stay as they are
 const g3 = gt(gf, 'akyru');
 assert.strictEqual(g3.status, 'conflict');
 assert.strictEqual(g3.from, 'Old,Readout', 'the original value is shown');
 assert(g3.to.length > 0 && g3.to !== g3.from);
 assert.strictEqual(gt(gf, 'Amary').status, 'conflict', 'Amary\'s single reading differs from the stored GTtags: shown, not applied');
-assert.strictEqual(gt(gf, 'Amary').from, 'Msc,Sg,Nom');
+assert.strictEqual(gt(gf, 'Amary').from, 'Msc,Sg,Nom', 'the stored value is shown as it is');
+assert.strictEqual(gt(gf, 'Amary').to, 'N,Msc,Sg,NPossd,Nom');
 let r = await svc.applyEnhancements(gid, gf.filter((f) => f.key === 'GTtags'));
 assert.strictEqual(r.replaced, 0, 'nothing non-empty was replaced');
 assert.strictEqual(svc.workingCols(gid, 0, GL(3))[9], 'GTtags=Old,Readout|SpaceAfter=No', 'existing GTtags of akyru untouched');

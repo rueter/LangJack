@@ -224,6 +224,15 @@ export const variantNumber = (tags) => {
 };
 
 /**
+ * Tag order carries meaning here. `Adp` straight after the lemma (vahel+Adp) is the adposition POS tag. After another
+ * POS tag it is a case of Apurinã: the form of a pronoun used only before postpositions (ywa+Pron+Pers+Adp).
+ */
+export const adpIsCase = (tags) => {
+  const at = (tags || []).indexOf('Adp');
+  return at > 0 && tags.slice(0, at).some((t) => t !== 'Adp' && POS_TO_UPOS[t]);
+};
+
+/**
  * Strips all occurrences of +Guess, Guess+, «+Guess», «Guess», and adjacent
  * compound/boundary guess markers from an analysis or lemma string, while
  * strictly preserving the English lexical word "guess" (e.g., in guess+V+Inf).
@@ -289,7 +298,7 @@ export class TagMapper {
       return 'PUNCT';
     }
 
-    const tagSet = new Set(tags);
+    const tagSet = new Set(adpIsCase(tags) ? tags.filter((t) => t !== 'Adp') : tags);
 
     // 1. Proper Noun precedence (Prop, Sem/Plc, Sem/Sur, Sem/Mal, Sem/Fem, etc.)
     if (tagSet.has('Prop') || tagSet.has('PROPN') || tags.some(t => t.startsWith('Sem/') || t === 'Prop')) {
@@ -479,6 +488,7 @@ export class TagMapper {
     // Map features
     const featsMap = {};
     for (const tag of cleanTags) {
+      if (tag === 'Adp' && !adpIsCase(cleanTags)) continue; // the POS tag, not a case
       if (TAG_TO_FEATS[tag]) {
         const item = TAG_TO_FEATS[tag];
         if (Array.isArray(item)) {

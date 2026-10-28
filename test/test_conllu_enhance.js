@@ -281,6 +281,12 @@ console.log('\n--- Testing analyzer tag mapping ---');
   assert(isVariantTag('v1') && isVariantTag('v25') && !isVariantTag('V') && !isVariantTag('Vblz'));
   assert.strictEqual(variantNumber(['v2', 'V']), 2);
   assert.strictEqual(variantNumber(['V', 'Sg3']), null);
+  const adpPos = TagMapper.parse('vahel+Adp');
+  assert.strictEqual(adpPos.upos, 'ADP'); assert.strictEqual(adpPos.feats, '_', 'Adp right after the lemma is the POS tag');
+  const adpCase = TagMapper.parse('ywa+Pron+Pers+Adp');
+  assert.strictEqual(adpCase.upos, 'PRON', 'Adp after another POS tag does not make the word an adposition');
+  assert.strictEqual(adpCase.featsMap.Case, 'Adp', 'it is the case of a pronoun used only before postpositions');
+  assert.strictEqual(adpCase.featsMap.PronType, 'Prs');
   console.log('✓ PronType (Pers, Interr, Dem) and VerbForm=Vnoun (NomAct, Der/NomAct); v-tags and Der add no FEATS');
 }
 

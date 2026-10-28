@@ -193,7 +193,7 @@ export class ConlluImportPanel {
       <label class="ci-inline" title="What the XPOS cell receives when a reading is used. A non-empty XPOS is never replaced without your confirmation.">XPOS gets
         <select data-role="xpos-style"><option value="short"${this.xposStyle === 'short' ? ' selected' : ''}>the short POS tag (N)</option>
           <option value="full"${this.xposStyle === 'full' ? ' selected' : ''}>the full analyzer tag string</option></select></label>
-      <label class="ci-inline" title="Off by default. Proposes MISC GTtags=… (the analyzer's tags after the lemma, comma-separated, POS tag left out, variant tag included) for the reading a token is based on. An existing different GTtags is never replaced without your confirmation.">
+      <label class="ci-inline" title="Off by default. Proposes MISC GTtags=… (the entire tag readout after the lemma, comma-separated, POS tag and variant tag included, in the analyzer's order) for the reading a token is based on. An existing different GTtags is never replaced without your confirmation.">
         <input type="checkbox" data-role="record-tags" ${this.service.exportOptions(this.currentId).recordTags ? 'checked' : ''}> also propose <code>GTtags=</code> in MISC (the analyzer's tag readout)</label></p>`;
   }
 
