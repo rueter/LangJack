@@ -80,25 +80,30 @@ export const TAG_TO_FEATS = {
   'Du': { feature: 'Number', value: 'Dual' },
 
   // Case
-  'Nom': { feature: 'Case', value: 'Nom' },
-  'Gen': { feature: 'Case', value: 'Gen' },
-  'Acc': { feature: 'Case', value: 'Acc' },
-  'Dat': { feature: 'Case', value: 'Dat' },
-  'Ine': { feature: 'Case', value: 'Ine' },
-  'Ela': { feature: 'Case', value: 'Ela' },
-  'Ill': { feature: 'Case', value: 'Ill' },
-  'Ade': { feature: 'Case', value: 'Ade' },
-  'Abl': { feature: 'Case', value: 'Abl' },
-  'All': { feature: 'Case', value: 'All' },
-  'Ess': { feature: 'Case', value: 'Ess' },
-  'Tra': { feature: 'Case', value: 'Tra' },
   'Abe': { feature: 'Case', value: 'Abe' },
+  'Abl': { feature: 'Case', value: 'Abl' },
+  'Acc': { feature: 'Case', value: 'Acc' },
+  'Ade': { feature: 'Case', value: 'Ade' },
+  'Adp': { feature: 'Case', value: 'Adp' },
+  'All': { feature: 'Case', value: 'All' },
+  'Apr': { feature: 'Case', value: 'Apr' },
+  'AprEla': { feature: 'Case', value: 'AprEla' },
+  'AprIll': { feature: 'Case', value: 'AprIll' },
+  'AprIne': { feature: 'Case', value: 'AprIne' },
   'Com': { feature: 'Case', value: 'Com' },
+  'Dat': { feature: 'Case', value: 'Dat' },
+  'Gen': { feature: 'Case', value: 'Gen' },
+  'Ela': { feature: 'Case', value: 'Ela' },
+  'Ess': { feature: 'Case', value: 'Ess' },
+  'Ill': { feature: 'Case', value: 'Ill' },
+  'Ine': { feature: 'Case', value: 'Ine' },
   'Lat': { feature: 'Case', value: 'Lat' },
   'Loc': { feature: 'Case', value: 'Loc' },
+  'Nom': { feature: 'Case', value: 'Nom' },
   'Par': { feature: 'Case', value: 'Par' },
   'Prl': { feature: 'Case', value: 'Prl' },
   'Ter': { feature: 'Case', value: 'Ter' },
+  'Tra': { feature: 'Case', value: 'Tra' },
 
   // Definiteness
   'Def': { feature: 'Definite', value: 'Def' },
@@ -109,18 +114,21 @@ export const TAG_TO_FEATS = {
   'Msc': { feature: 'Gender', value: 'Masc' },
     
   // Tense
+  'Fut': { feature: 'Tense', value: 'Fut' },
+  'NFut': { feature: 'Tense', value: 'Past,Pres' }, // non-future: UD lists several values alphabetically, comma-separated
+  'Past': { feature: 'Tense', value: 'Past' },
   'Prs': { feature: 'Tense', value: 'Pres' },
   'Prt': { feature: 'Tense', value: 'Past' },
   'Prt1': { feature: 'Tense', value: 'Past' },
   'Prt2': { feature: 'Tense', value: 'Past' },
-  'Past': { feature: 'Tense', value: 'Past' },
 
   // Mood
+  'Cond': { feature: 'Mood', value: 'Cnd' },
+  'Des': { feature: 'Mood', value: 'Des' },
   'Ind': { feature: 'Mood', value: 'Ind' },
   'Imprt': { feature: 'Mood', value: 'Imp' },
-  'Cond': { feature: 'Mood', value: 'Cnd' },
-  'Pot': { feature: 'Mood', value: 'Pot' },
   'Opt': { feature: 'Mood', value: 'Opt' },
+  'Pot': { feature: 'Mood', value: 'Pot' },
 
   // Voice
   'Act': { feature: 'Voice', value: 'Act' },
@@ -147,8 +155,8 @@ export const TAG_TO_FEATS = {
   'ScPl1': [{ feature: 'Person[subj]', value: '1' }, { feature: 'Number[subj]', value: 'Plur' }],
   'ScPl2': [{ feature: 'Person[subj]', value: '2' }, { feature: 'Number[subj]', value: 'Plur' }],
   'ScPl3': [{ feature: 'Person[subj]', value: '3' }, { feature: 'Number[subj]', value: 'Plur' }],
-  'ScSg3F': [{ feature: 'Person[subj]', value: '3' }, { feature: 'Number[subj]', value: 'Plur' }, { feature: 'Gender[subj]', value: 'Fem' }],
-  'ScSg3M': [{ feature: 'Person[subj]', value: '3' }, { feature: 'Number[subj]', value: 'Plur' }, { feature: 'Gender[subj]', value: 'Masc' }],
+  'ScPl3F': [{ feature: 'Person[subj]', value: '3' }, { feature: 'Number[subj]', value: 'Plur' }, { feature: 'Gender[subj]', value: 'Fem' }],
+  'ScPl3M': [{ feature: 'Person[subj]', value: '3' }, { feature: 'Number[subj]', value: 'Plur' }, { feature: 'Gender[subj]', value: 'Masc' }],
 
   // Uralic Object Agreement
   'OcSg1': [{ feature: 'Person[obj]', value: '1' }, { feature: 'Number[obj]', value: 'Sing' }],
@@ -161,6 +169,8 @@ export const TAG_TO_FEATS = {
   'OcPl3': [{ feature: 'Person[obj]', value: '3' }, { feature: 'Number[obj]', value: 'Plur' }],
   'OcPl3F': [{ feature: 'Person[obj]', value: '3' }, { feature: 'Number[obj]', value: 'Plur' }, { feature: 'Gender[obj]', value: 'Fem' }],
   'OcPl3M': [{ feature: 'Person[obj]', value: '3' }, { feature: 'Number[obj]', value: 'Plur' }, { feature: 'Gender[obj]', value: 'Masc' }],
+  'Oc3F': [{ feature: 'Person[obj]', value: '3' }, { feature: 'Number[obj]', value: 'Plur,Sing' }, { feature: 'Gender[obj]', value: 'Fem' }],
+  'Oc3M': [{ feature: 'Person[obj]', value: '3' }, { feature: 'Number[obj]', value: 'Plur,Sing' }, { feature: 'Gender[obj]', value: 'Masc' }],
 
   // Possessive Suffixes
   'PxSg1': [{ feature: 'Person[psor]', value: '1' }, { feature: 'Number[psor]', value: 'Sing' }],

@@ -259,4 +259,17 @@ console.log('\n--- Testing reading selection ---');
   console.log('✓ Plain readings preferred over derived ones; a matching lemma is a label, not a filter');
 }
 
+// --- Analyzer tags -> FEATS (tag-mapper.js TAG_TO_FEATS) ---
+console.log('\n--- Testing analyzer tag mapping ---');
+{
+  const { TagMapper } = await import('../js/services/tag-mapper.js');
+  assert.strictEqual(TagMapper.parse('atama+V+NFut').featsMap.Tense, 'Past,Pres', 'NFut (non-future) is Past and Pres');
+  const sg = TagMapper.parse('atama+V+ScSg3M').featsMap;
+  assert.strictEqual(sg['Number[subj]'], 'Sing', 'ScSg3M is singular (a duplicate ScSg3M key once made it plural)');
+  const pl = TagMapper.parse('atama+V+ScPl3M').featsMap;
+  assert.strictEqual(pl['Number[subj]'], 'Plur');
+  assert.strictEqual(pl['Gender[subj]'], 'Masc');
+  console.log('✓ NFut gives Tense=Past,Pres; ScSg3M is Sing and ScPl3M is Plur');
+}
+
 console.log('\nAll multi-column enhancement tests passed.');
