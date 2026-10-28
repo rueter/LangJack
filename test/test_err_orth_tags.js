@@ -123,7 +123,7 @@ const sentence = {
 
 // 4.1 CoNLL-U export
 const conllu = ConlluExporter.export([sentence]);
-assert(conllu.includes('2\tkiil\tkiiĺ\tNOUN\tkiiĺ+N+Err/Orth-no-pal+Sg+Nom\tCase=Nom|Number=Sing|Typo=Yes'), 'CoNLL-U must output clean morphology with +Err/Orth-no-pal in XPOS and Typo=Yes in FEATS');
+assert(conllu.includes('2\tkiil\tkiiĺ\tNOUN\tN+Err/Orth-no-pal+Sg+Nom\tCase=Nom|Number=Sing|Typo=Yes'), 'CoNLL-U must output clean morphology with +Err/Orth-no-pal in XPOS and Typo=Yes in FEATS');
 console.log('✓ CoNLL-U export contains:');
 console.log(conllu.trim().split('\n').filter(l => !l.startsWith('#')).join('\n'));
 

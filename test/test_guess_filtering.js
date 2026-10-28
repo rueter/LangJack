@@ -256,7 +256,7 @@ const sampleSentence = {
 };
 
 const conllu = ConlluExporter.export([sampleSentence]);
-assert(conllu.includes('lõunõ+N+N_1_hans1a+Cmp#eesti+N+N_1_herrae+Sg+Nom'), 'CoNLL-U XPOS must output clean morphology without +Guess');
+assert(conllu.includes('\tN+N_1_hans1a+Cmp+N+N_1_herrae+Sg+Nom\t'), 'CoNLL-U XPOS must output the tags only, without lemma stems and without +Guess');
 assert(!conllu.includes('+Guess'), 'CoNLL-U export must NOT contain +Guess tag');
 console.log('✓ CoNLL-U exporter output verified: clean morphology without +Guess');
 

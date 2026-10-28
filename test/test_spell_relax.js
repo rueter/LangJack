@@ -166,14 +166,14 @@ console.log('✓ CoNLL-U export contains:\n' + conllu.trim());
 // Verify oll' row in CoNLL-U
 const ollRow = conllu.split('\n').find(l => l.startsWith("2\toll'"));
 assert(ollRow, 'CoNLL-U must contain row for oll\'');
-assert(ollRow.includes('olõma+V+Act+Ind+Prt+Sg3+SplRlx'), 'XPOS must be olõma+V+Act+Ind+Prt+Sg3+SplRlx');
+assert(ollRow.includes('\tV+Act+Ind+Prt+Sg3+SplRlx\t'), 'XPOS must be V+Act+Ind+Prt+Sg3+SplRlx (tags only)');
 assert(ollRow.includes('Typo=Yes'), 'FEATS (Column 6) must contain Typo=Yes');
 assert(ollRow.includes('CorrectForm=olĺ'), 'MISC (Column 10) must contain CorrectForm=olĺ');
 
 // Verify kiil' row in CoNLL-U
 const kiilRow = conllu.split('\n').find(l => l.startsWith("4\tkiil'"));
 assert(kiilRow, 'CoNLL-U must contain row for kiil\'');
-assert(kiilRow.includes('kiiĺ+N+Sg+Nom+SplRlx'), 'XPOS must be kiiĺ+N+Sg+Nom+SplRlx');
+assert(kiilRow.includes('\tN+Sg+Nom+SplRlx\t'), 'XPOS must be N+Sg+Nom+SplRlx (tags only)');
 assert(kiilRow.includes('Typo=Yes'), 'FEATS (Column 6) must contain Typo=Yes');
 assert(kiilRow.includes('CorrectForm=kiiĺ'), 'MISC (Column 10) must contain CorrectForm=kiiĺ');
 

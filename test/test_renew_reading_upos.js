@@ -86,7 +86,7 @@ async function testRenewReadingAndUpos() {
   assert.strictEqual(cols[1], 'Авольсодамс', 'Form should match original');
   assert.strictEqual(cols[2], 'содамс', 'Column 3 (LEMMA) must reflect renewed lemma');
   assert.strictEqual(cols[3], 'VERB', 'Column 4 (UPOS) must reflect renewed UPOS');
-  assert.strictEqual(cols[4], 'содамс+V+Inf', 'Column 5 (XPOS) must reflect renewed reading');
+  assert.strictEqual(cols[4], 'V+Inf', 'Column 5 (XPOS) must reflect renewed reading');
   assert(cols[9].includes('Gloss[eng]=') || cols[9].includes('Gloss['), 'Column 10 (MISC) must include gloss formatted as Gloss[lang]=...');
 
   // Test 4: Testing Interlinear and Ve'rdd with renewed reading

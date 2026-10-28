@@ -130,8 +130,8 @@ console.log('Columns for "all":', {
 if (cols[3] !== 'ADP') {
   throw new Error(`Expected UPOS "ADP" in column 4, got "${cols[3]}"`);
 }
-if (cols[4] !== 'all+Po') {
-  throw new Error(`Expected XPOS "all+Po" in column 5, got "${cols[4]}"`);
+if (cols[4] !== 'Po') {
+  throw new Error(`Expected XPOS "Po" in column 5, got "${cols[4]}"`);
 }
 if (cols[5] !== 'AdpType=Post') {
   throw new Error(`Expected FEATS "AdpType=Post" in column 6, got "${cols[5]}"`);

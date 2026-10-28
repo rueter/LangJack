@@ -128,16 +128,16 @@ console.log('Generated CoNLL-U Output:');
 console.log(conllu.trim());
 
 // Verify column 4 (UPOS) and column 5 (XPOS with morphological tags)
-if (!conllu.includes('1\tВастомась\tвастома\tNOUN\tвастома+N+Sg+Nom+Def')) {
+if (!conllu.includes('1\tВастомась\tвастома\tNOUN\tN+Sg+Nom+Def')) {
   throw new Error('CoNLL-U row 1 failed derivation check');
 }
-if (!conllu.includes('2\tульнесь\tульнемс\tVERB\tульнемс+V+IV+Ind+Prt1+ScSg3')) {
+if (!conllu.includes('2\tульнесь\tульнемс\tVERB\tV+IV+Ind+Prt1+ScSg3')) {
   throw new Error('CoNLL-U row 2 failed derivation check');
 }
-if (!conllu.includes('3\tпек\tпек\tADV\tпек+Adv')) {
+if (!conllu.includes('3\tпек\tпек\tADV\tAdv\t')) {
   throw new Error('CoNLL-U row 3 failed derivation check');
 }
-if (!conllu.includes('4\tвадря\tвадря\tADJ\tвадря+A+SP+Nom+Indef')) {
+if (!conllu.includes('4\tвадря\tвадря\tADJ\tA+SP+Nom+Indef')) {
   throw new Error('CoNLL-U row 4 failed derivation check');
 }
 console.log('✓ CoNLL-U columns 4 (UPOS) and 5 (XPOS) verified with derived tags');
@@ -154,7 +154,7 @@ tok4.selectedReading.upos = tok4.upos;
 tok4.selectedReading.pos = targetPos;
 
 const renewedConllu = ConlluExporter.export([sentence]);
-if (!renewedConllu.includes('4\tвадря\tвадря\tVERB\tвадря+V+Ind+Prs')) {
+if (!renewedConllu.includes('4\tвадря\tвадря\tVERB\tV+Ind+Prs\t')) {
   throw new Error('Renewed CoNLL-U failed to reflect re-derived UPOS');
 }
 console.log(`✓ Token 4 updated: "${tok4.selectedReading.raw}" -> UPOS: ${tok4.upos} (< +${targetPos})`);
