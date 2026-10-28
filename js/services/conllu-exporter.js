@@ -96,7 +96,7 @@ export class ConlluExporter {
           : (xposFromAnalysis(fullRaw) || reading.pos || upos || '_');
         let feats = punct ? '_' : (reading.feats || '_');
         if (!punct && feats === '_' && reading.raw) {
-          const parsed = TagMapper.parse(reading.raw);
+          const parsed = TagMapper.parse(reading.raw, 0, tok.lang || sent.lang || language || analyzerService.activeLang);
           feats = parsed.feats || '_';
         }
 

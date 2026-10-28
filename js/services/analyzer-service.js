@@ -621,7 +621,7 @@ export class AnalyzerService {
         const cleanAnalysis = analysisStr.replace(/@[^@]*@/g, '');
         if (!seen.has(cleanAnalysis)) {
           seen.add(cleanAnalysis);
-          readings.push(TagMapper.parse(cleanAnalysis, weight));
+          readings.push(TagMapper.parse(cleanAnalysis, weight, lang));
         }
       }
 

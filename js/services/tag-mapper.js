@@ -233,6 +233,43 @@ export const variantNumber = (tags) => {
 };
 
 /**
+ * Mappings that differ by language, tried before TAG_TO_FEATS. The tag is the analyzer's; the value is one
+ * { feature, value } or an array of them. Language codes are ISO 639-3.
+ */
+const PERMIAN_CASES = {
+  // Permian: both +Abe and +Car are Case=Abe, told apart by Variant (nominal vs clausal)
+  Abe: [{ feature: 'Case', value: 'Abe' }, { feature: 'Variant', value: 'Nomin' }],
+  Car: [{ feature: 'Case', value: 'Abe' }, { feature: 'Variant', value: 'Vclause' }],
+  // second past: non-firsthand evidential
+  Prt2: [{ feature: 'Evident', value: 'Nfh' }, { feature: 'Tense', value: 'Past' }]
+};
+const ERZYA_MOKSHA_PAST = {
+  // second past: habitual
+  Prt2: [{ feature: 'Aspect', value: 'Hab' }, { feature: 'Tense', value: 'Past' }]
+};
+export const LANG_TAG_TO_FEATS = {
+  koi: PERMIAN_CASES,
+  kpv: PERMIAN_CASES,
+  mdf: ERZYA_MOKSHA_PAST,
+  myv: ERZYA_MOKSHA_PAST
+};
+
+/** Language code of a language setting such as "kpv", "kpv_lattice" or "Komi-Zyrian (kpv)" -> "kpv"; "" when unknown. */
+const langKey = (lang) => {
+  const m = String(lang || '').toLowerCase().match(/\(([a-z]{2,3})\)|^([a-z]{2,3})(?![a-z])/);
+  return m ? (m[1] || m[2]) : '';
+};
+
+/**
+ * What the analyzer tag `tag` means for FEATS in language `lang`: the language's own mapping when it has one,
+ * otherwise the general TAG_TO_FEATS entry. Returns one { feature, value }, an array of them, or undefined.
+ */
+export const featsForTag = (tag, lang) => {
+  const own = LANG_TAG_TO_FEATS[langKey(lang)];
+  return (own && own[tag]) || TAG_TO_FEATS[tag];
+};
+
+/**
  * Tag order carries meaning here. `Adp` straight after the lemma (vahel+Adp) is the adposition POS tag. After another
  * POS tag it is a case of Apurinã: the form of a pronoun used only before postpositions (ywa+Pron+Pers+Adp).
  */
@@ -404,9 +441,10 @@ export class TagMapper {
    * Parse a raw analysis string (e.g., "вастома+N+Sg+Nom+Def") into structured fields.
    * @param {string} rawAnalysis
    * @param {number} [weight=0.0]
+   * @param {string|null} [lang=null]  language of the text: a few tags map to different features by language (see LANG_TAG_TO_FEATS)
    * @returns {Object}
    */
-  static parse(rawAnalysis, weight = 0.0) {
+  static parse(rawAnalysis, weight = 0.0, lang = null) {
     if (!rawAnalysis || typeof rawAnalysis !== 'string') {
       return {
         raw: '',
@@ -498,8 +536,8 @@ export class TagMapper {
     const featsMap = {};
     for (const tag of cleanTags) {
       if (tag === 'Adp' && !adpIsCase(cleanTags)) continue; // the POS tag, not a case
-      if (TAG_TO_FEATS[tag]) {
-        const item = TAG_TO_FEATS[tag];
+      const item = featsForTag(tag, lang);
+      if (item) {
         if (Array.isArray(item)) {
           for (const sub of item) {
             featsMap[sub.feature] = sub.value;

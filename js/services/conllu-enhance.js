@@ -4,7 +4,7 @@
  * Nothing here writes anything; conllu-import-service.js decides what may be applied.
  */
 
-import { TAG_TO_FEATS, stripGuessTags, isVariantTag, variantNumber } from './tag-mapper.js';
+import { TAG_TO_FEATS, featsForTag, stripGuessTags, isVariantTag, variantNumber } from './tag-mapper.js';
 import { dependencyService } from './dependency-service.js';
 
 /** Columns the enhancement may fill. ID and FORM are locked: changing them breaks token alignment and `# text`. */
@@ -85,8 +85,8 @@ const ROLES = { S: 'subj', A: 'subj', SBJ: 'subj', O: 'obj', P: 'obj', OBJ: 'obj
 const PERSON_NUMBER = /^([123])(SG|PL|DU)?$/;
 const GRAMMATICAL = /^[\p{Lu}\d][\p{Lu}\d./]*$/u; // no lowercase letter: a grammatical morpheme, not a lexical gloss
 
-const featsOfTag = (tag) => {
-  const item = TAG_TO_FEATS[tag];
+const featsOfTag = (tag, lang) => {
+  const item = featsForTag(tag, lang);
   if (!item) return null;
   return (Array.isArray(item) ? item : [item]).map((f) => [f.feature, f.value]);
 };
@@ -104,9 +104,10 @@ function addValue(map, key, value) {
  * A person bundle without a role letter becomes [psor] on nouns/adpositions and [subj] on verbs.
  * @param {string} gloss
  * @param {string} [upos]
+ * @param {string} [lang]  language of the text (a few tags map differently by language)
  * @returns {{ feats: Map<string,string>, mapped: string[], unmapped: string[] }}
  */
-export function featsFromGloss(gloss, upos = '') {
+export function featsFromGloss(gloss, upos = '', lang = '') {
   const feats = new Map();
   const mapped = [];
   const unmapped = [];
@@ -133,8 +134,8 @@ export function featsFromGloss(gloss, upos = '') {
         bundle.push(['Number', NUMBERS[part]]);
       } else if (GENDERS[part]) {
         bundle.push(['Gender', GENDERS[part]]);
-      } else if (ABBR_TO_TAG[part] && featsOfTag(ABBR_TO_TAG[part])) {
-        found.push(...featsOfTag(ABBR_TO_TAG[part]));
+      } else if (ABBR_TO_TAG[part] && featsOfTag(ABBR_TO_TAG[part], lang)) {
+        found.push(...featsOfTag(ABBR_TO_TAG[part], lang));
       } else if (ABBR_EXTRA[part]) {
         found.push(...Object.entries(ABBR_EXTRA[part]));
       } else {

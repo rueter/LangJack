@@ -1010,7 +1010,7 @@ export class ConlluImportService {
         if (cols.includes('xpos') && reading) simple('xpos', xpos);
 
         if (cols.includes('feats')) {
-          const gloss = featsFromGloss(this._rowGloss(w.cols[9], lang), upos);
+          const gloss = featsFromGloss(this._rowGloss(w.cols[9], lang), upos, srcLang);
           const proposed = new Map(gloss.feats);
           const sources = [];
           if (gloss.feats.size) sources.push('gloss');

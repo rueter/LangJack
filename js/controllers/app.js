@@ -1194,7 +1194,7 @@ export class WorkbenchApp {
         }
         targetReading.tags = tags;
         targetReading.raw = `${targetReading.lemma || tok.lemma || tok.form}+${tags.join('+')}`;
-        const parsed = TagMapper.parse(targetReading.raw);
+        const parsed = TagMapper.parse(targetReading.raw, 0, tok.lang || this.srcLang);
         targetReading.feats = parsed.feats;
         targetReading.featsMap = parsed.featsMap;
         // Re-derive UPOS to ensure direct derivation from morphological analysis output (NOUN < +N)
@@ -1256,7 +1256,7 @@ export class WorkbenchApp {
         const current = tok.customReading ? tok.customReading.raw : (tok.selectedReading ? tok.selectedReading.raw : tok.form);
         const input = prompt(`Enter custom morphological analysis for "${tok.form}" (e.g. ${tok.form}+N+Sg+Nom):`, current);
         if (input && input.trim()) {
-          const parsed = TagMapper.parse(input.trim());
+          const parsed = TagMapper.parse(input.trim(), 0, tok.lang || this.srcLang);
           tok.customReading = parsed;
           tok.lemma = parsed.lemma;
           // Directly derive UPOS from morphological analysis output (NOUN < +N):
@@ -1372,7 +1372,7 @@ export class WorkbenchApp {
         }
         tok.customReading.tags = tags;
         tok.customReading.raw = `${newLemma}+${tags.join('+')}`;
-        const parsed = TagMapper.parse(tok.customReading.raw);
+        const parsed = TagMapper.parse(tok.customReading.raw, 0, tok.lang || this.srcLang);
         tok.customReading = parsed;
         // Directly derived UPOS: NOUN < +N
         tok.upos = parsed.upos;
@@ -1389,7 +1389,7 @@ export class WorkbenchApp {
         }
         tok.selectedReading.tags = tags;
         tok.selectedReading.raw = `${newLemma}+${tags.join('+')}`;
-        const parsed = TagMapper.parse(tok.selectedReading.raw);
+        const parsed = TagMapper.parse(tok.selectedReading.raw, 0, tok.lang || this.srcLang);
         tok.selectedReading = parsed;
         tok.selectedReading.isGuessed = false;
         tok.isUnrecognized = false;
@@ -1397,7 +1397,7 @@ export class WorkbenchApp {
         tok.upos = parsed.upos;
       } else {
         const raw = `${newLemma}+${posTag}`;
-        const parsed = TagMapper.parse(raw);
+        const parsed = TagMapper.parse(raw, 0, tok.lang || this.srcLang);
         tok.selectedReading = parsed;
         tok.selectedReading.isGuessed = false;
         tok.isUnrecognized = false;
