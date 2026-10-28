@@ -5,6 +5,8 @@
 
 import { TagMapper, stripGuessTags } from './tag-mapper.js';
 import { analyzerService } from './analyzer-service.js';
+import { sortMiscSegments } from './conllu-parser.js';
+import { parseFeats, featsToString } from './conllu-enhance.js';
 
 /** A token made only of punctuation or symbols (the analyzer's own isPunct flag covers just a few marks). */
 const isPunctForm = (form) => /^[\p{P}\p{S}]+$/u.test(form || '');
@@ -41,6 +43,9 @@ export function noSpaceAfter(text, tokens) {
   }
   return out;
 }
+
+/** A FEATS cell with its Feature=Value pairs in alphabetical order of the feature names ("_" stays "_"). */
+const sortFeats = (feats) => (!feats || feats === '_' ? '_' : featsToString(parseFeats(feats)));
 
 export class ConlluExporter {
   /**
@@ -182,9 +187,11 @@ export class ConlluExporter {
           miscParts.push(`AltReadings=${tok.readings.length}`);
         }
 
-        const misc = miscParts.length > 0 ? miscParts.join('|') : '_';
+        const misc = miscParts.length
+          ? sortMiscSegments(miscParts.map((raw) => ({ key: raw.split('=')[0], raw }))).map((seg) => seg.raw).join('|')
+          : '_';
 
-        const row = [id, form, lemma, upos, xpos, feats, head, deprel, deps, misc].join('\t');
+        const row = [id, form, lemma, upos, xpos, sortFeats(feats), head, deprel, deps, misc].join('\t');
         lines.push(row);
       });
 

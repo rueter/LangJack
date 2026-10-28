@@ -143,34 +143,37 @@ export function parseMisc(misc) {
   });
 }
 
-const keyOrder = (a, b) => a.toLowerCase().localeCompare(b.toLowerCase(), 'en');
+// Alphabetical, case-insensitive by code point (as UD sorts FEATS): "Gloss" before "Gloss[en]", "GTtags" after "Gloss"
+const keyOrder = (a, b) => { const x = a.toLowerCase(); const y = b.toLowerCase(); return x < y ? -1 : x > y ? 1 : 0; };
+
+/** MISC segments in alphabetical order of their keys (stable for equal keys). */
+export const sortMiscSegments = (segs) => [...segs].sort((p, q) => keyOrder(p.key, q.key));
+
+/** A MISC cell with its Key=Value pairs in alphabetical order ("_" stays "_"). */
+export function sortMisc(misc) {
+  const segs = parseMisc(misc);
+  return segs.length ? sortMiscSegments(segs).map((s) => s.raw).join('|') : '_';
+}
 
 /**
- * Sets (string) or removes (null) MISC keys, in place where the key already exists. New keys go in
- * alphabetical position when the existing segments are already alphabetical, otherwise at the end.
+ * Sets (string) or removes (null) MISC keys, in place where the key already exists. Whenever a cell is edited the
+ * whole cell comes out in alphabetical order of its keys; a cell nobody edits is never touched (see `applyOverrides`).
  */
 export function applyMiscEdits(misc, edits) {
   const segs = parseMisc(misc);
-  for (const [key, value] of Object.entries(edits || {})) {
+  const entries = Object.entries(edits || {});
+  for (const [key, value] of entries) {
     const idx = segs.findIndex((s) => s.key === key);
     if (value === null || value === undefined) {
       if (idx !== -1) segs.splice(idx, 1);
       continue;
     }
     const seg = { key, value, raw: value === '' ? key : `${key}=${value}` };
-    if (idx !== -1) {
-      segs[idx] = seg;
-    } else {
-      const sorted = segs.every((s, i) => i === 0 || keyOrder(segs[i - 1].key, s.key) <= 0);
-      let at = segs.length;
-      if (sorted) {
-        const after = segs.findIndex((s) => keyOrder(s.key, key) > 0);
-        if (after !== -1) at = after;
-      }
-      segs.splice(at, 0, seg);
-    }
+    if (idx !== -1) segs[idx] = seg;
+    else segs.push(seg);
   }
-  return segs.length ? segs.map((s) => s.raw).join('|') : '_';
+  const ordered = entries.length ? sortMiscSegments(segs) : segs;
+  return ordered.length ? ordered.map((s) => s.raw).join('|') : '_';
 }
 
 // ---------------------------------------------------------------------------------------

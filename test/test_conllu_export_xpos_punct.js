@@ -48,4 +48,15 @@ assert.strictEqual(rows[5][7], 'punct');
 assert.strictEqual(rows[6][9], '_', 'the last token gets no flag');
 for (const r of rows) assert.strictEqual(r.length, 10);
 
+// alphabetical order in FEATS and MISC
+const mixed = ConlluExporter.export([{
+  sent_id: 2, text: 'Пек,',
+  tokens: [{
+    form: 'Пек', lemma: 'пек', upos: 'ADV', selectedReading: { raw: 'пек+Adv', pos: 'Adv', upos: 'ADV', feats: 'Number=Sing|Case=Nom|Degree=Pos' },
+    customGloss: 'very', customGlossLang: 'en', readings: [{}, {}]
+  }, { form: ',', isPunct: true }]
+}]).split('\n').filter((l) => l && !l.startsWith('#')).map((l) => l.split('\t'));
+assert.strictEqual(mixed[0][5], 'Case=Nom|Degree=Pos|Number=Sing', 'FEATS sorted alphabetically');
+assert.strictEqual(mixed[0][9], 'AltReadings=2|Gloss[en]=very|SpaceAfter=No', 'MISC sorted alphabetically');
+
 console.log('✓ all passed');

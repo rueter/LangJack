@@ -149,7 +149,9 @@ assert.strictEqual(parseConllu(serializeConllu(parsed, ovRemove)).sentences[0].l
 console.log('✓ No-op edits are pruned and revert restores the original bytes');
 
 assert.strictEqual(applyMiscEdits('SpaceAfter=No', { 'gloss[pt]': 'x' }), 'gloss[pt]=x|SpaceAfter=No', 'New key keeps alphabetical order when MISC is sorted');
-assert.strictEqual(applyMiscEdits('SpaceAfter=No|CGdeprel=@X', { 'gloss[pt]': 'x' }), 'SpaceAfter=No|CGdeprel=@X|gloss[pt]=x', 'Unsorted MISC: append');
+assert.strictEqual(applyMiscEdits('SpaceAfter=No|CGdeprel=@X', { 'gloss[pt]': 'x' }), 'CGdeprel=@X|gloss[pt]=x|SpaceAfter=No', 'An edited MISC cell always comes out alphabetical, even when it was not');
+assert.strictEqual(applyMiscEdits('SpaceAfter=No|CGdeprel=@X', {}), 'SpaceAfter=No|CGdeprel=@X', 'A cell without edits is never reordered');
+assert.strictEqual(applyMiscEdits('Gloss[en]=a|GTtags=N|Gloss=b', { SpaceAfter: 'No' }), 'Gloss=b|Gloss[en]=a|GTtags=N|SpaceAfter=No', 'Case-insensitive code-point order');
 assert.throws(() => editMiscKey({}, s2, lineOf(s2, '1'), 'gloss[pt]', 'a|b'), /Invalid MISC value/);
 assert.throws(() => editCell({}, s2, lineOf(s2, '1'), 'upos', 'A\tB'), /Invalid value/);
 assert.throws(() => editCell({}, s2, 0, 'upos', 'X'), /not an editable/);
