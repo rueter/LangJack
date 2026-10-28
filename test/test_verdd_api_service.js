@@ -219,6 +219,10 @@ console.log('=== 9. Merging undetermined entries ===');
   const page2 = await api.mergeCandidates({ language: 'sms', limit: 10, offset: 10 });
   assert.deepStrictEqual(page2, { total: 12, groups: [{ undetermined: { id: 7 }, candidates: [{ id: 12 }] }] });
   assert.deepStrictEqual(calls[0].query, { language: 'sms', limit: '10', offset: '10' });
+  // capitalised nouns of one language: the mode goes to the server, groups are { entry, candidates }
+  const caps = apiWith({ 'GET /verdd/api/v1/lexemes/merge-candidates/': { body: { count: 1, results: [{ entry: { id: 3 }, candidates: [{ id: 4 }] }] } } });
+  assert.deepStrictEqual(await caps.api.mergeCandidates({ language: 'fin', mode: 'capitalised-noun' }), { total: 1, groups: [{ entry: { id: 3 }, candidates: [{ id: 4 }] }] });
+  assert.deepStrictEqual(caps.calls[0].query, { language: 'fin', mode: 'capitalised-noun', limit: '10', offset: '0' });
   assert.strictEqual((await api.mergeLexeme(7, 12, { dryRun: true })).dry_run, true);
   assert.deepStrictEqual(calls[1].body, { into: 12, dry_run: true });
   assert.strictEqual((await api.mergeLexeme(7, 12)).dry_run, false, 'a real merge must not be a dry run by default');

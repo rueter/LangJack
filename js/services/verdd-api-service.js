@@ -223,9 +223,13 @@ export class VerddApi {
     return this.request('POST', '/relation-example-links/', { body: { example_from: exampleFrom, example_to: exampleTo } });
   }
 
-  /** Entries with undetermined POS that share headword and language with a real-POS entry. */
-  async mergeCandidates({ language, limit = 10, offset = 0 } = {}) {
-    const page = await this.request('GET', '/lexemes/merge-candidates/', { query: { language, limit, offset } });
+  /**
+   * Entries with undetermined POS that share headword and language with a real-POS entry; or, with
+   * mode "capitalised-noun" (language required), nouns whose headword begins with a capital, each
+   * with the same word in lower case or under another POS (groups are then { entry, candidates }).
+   */
+  async mergeCandidates({ language, mode, limit = 10, offset = 0 } = {}) {
+    const page = await this.request('GET', '/lexemes/merge-candidates/', { query: { language, mode, limit, offset } });
     return { total: page.count, groups: page.results };
   }
 

@@ -25,6 +25,9 @@ const RELATION_TYPES = {
 // Relations that exist as a pair of rows (A -> B and B -> A); Ve'rdd keeps the pair together.
 const MIRROR_TYPE = { 4: 14, 14: 4, 6: 6, 7: 7, 8: 9, 9: 8, 12: 12 };
 const PAGE_SIZE = 25;
+const CAPITALISED_NOUN = 'capitalised-noun'; // merge-candidates mode: nouns (N) whose headword begins with a capital
+/** The entry a merge group is about: the capitalised noun, or the undetermined-POS entry. */
+const groupEntry = (group) => group.entry || group.undetermined;
 
 export class VerddPanel {
   /**
@@ -50,7 +53,7 @@ export class VerddPanel {
     this.posList = VERDD_POS_FALLBACK;
     this.rows = [];
     this.tab = 'send';
-    this.merge = { language: '', groups: [], total: 0, loaded: false, previews: {}, open: null };
+    this.merge = { mode: 'undetermined', language: '', groups: [], total: 0, loaded: false, previews: {}, open: null };
     this.browse = { filters: { language: '', text: '', pos: '', contains: true }, results: [], total: 0, searched: false, detail: null };
   }
 
@@ -884,10 +887,17 @@ export class VerddPanel {
   // ------------------------------------------------------------------------------------
 
   renderMerge() {
+    const capital = this.merge.mode === CAPITALISED_NOUN;
     this.view('merge').innerHTML = `
-      <p class="vw-hint">Entries whose part of speech is undetermined (empty, ZERO or UND) and that share their headword and language with an entry that has one. An <strong>empty</strong> entry can simply be absorbed; otherwise inspect both, then join them. Nothing is changed until you confirm.</p>
+      <p class="vw-hint">${capital
+        ? 'Nouns (POS N) of <strong>one language</strong> whose headword begins with a capital letter: names that may be proper nouns (Prop), or capitalised by mistake. Whether that is wrong depends on the language (weekdays and months are common nouns in many), which is why a language is required. Where the same word exists in lower case or under another POS it is offered as the entry to join. Nothing is changed until you confirm.'
+        : 'Entries whose part of speech is undetermined (empty, ZERO or UND) and that share their headword and language with an entry that has one. An <strong>empty</strong> entry can simply be absorbed; otherwise inspect both, then join them. Nothing is changed until you confirm.'}</p>
       <form class="vw-search" data-form="merge-find">
-        <label>Language <input data-merge-filter="language" list="vwLangs" value="${esc(this.merge.language)}" autocapitalize="off" placeholder="all languages"></label>
+        <label>Find <select data-merge-filter="mode">
+          <option value="undetermined" ${capital ? '' : 'selected'}>undetermined POS with a twin</option>
+          <option value="${CAPITALISED_NOUN}" ${capital ? 'selected' : ''}>capitalised nouns (N)</option>
+        </select></label>
+        <label>Language <input data-merge-filter="language" list="vwLangs" value="${esc(this.merge.language)}" autocapitalize="off" placeholder="${capital ? 'e.g. fin' : 'all languages'}" ${capital ? 'required' : ''}></label>
         <button class="btn btn-primary btn-sm" type="submit">Find</button>
       </form>
       <div id="vwMergeBody"></div>`;
@@ -900,10 +910,10 @@ export class VerddPanel {
     if (!loaded) {
       body.innerHTML = '<div class="vw-empty">Press Find to list entries that can be merged.</div>';
     } else if (!groups.length) {
-      body.innerHTML = '<div class="vw-empty">No mergeable entries found.</div>';
+      body.innerHTML = `<div class="vw-empty">${this.merge.mode === CAPITALISED_NOUN ? `No nouns with a capital initial in ${esc(this.merge.language.trim())}.` : 'No mergeable entries found.'}</div>`;
     } else {
       body.innerHTML = `
-        <div class="vw-hint">${total} mergeable ${total === 1 ? 'entry' : 'entries'}.</div>
+        <div class="vw-hint">${total} ${this.merge.mode === CAPITALISED_NOUN ? `capitalised ${total === 1 ? 'noun' : 'nouns'}` : `mergeable ${total === 1 ? 'entry' : 'entries'}`}.</div>
         <div class="vw-cards">${groups.map(g => this.mergeGroupHtml(g)).join('')}</div>
         ${groups.length < total ? '<button class="btn btn-secondary btn-sm" data-action="merge-more">Show more</button>' : ''}`;
     }
@@ -920,6 +930,7 @@ export class VerddPanel {
   }
 
   mergeGroupHtml(group) {
+    if (group.entry) return this.capitalGroupHtml(group);
     const u = group.undetermined;
     const candidates = group.candidates.map(c => `
       <div class="vw-merge-col">
@@ -940,11 +951,35 @@ export class VerddPanel {
       </article>`;
   }
 
+  /** A capitalised noun and the entries it could be joined with (same word in lower case, or under another POS). */
+  capitalGroupHtml(group) {
+    const e = group.entry;
+    const candidates = group.candidates.map(c => `
+      <div class="vw-merge-col">
+        ${this.mergeEntryHtml(c, true)}
+        <button class="btn btn-secondary btn-sm" data-action="merge-inspect" data-absorbed="${e.id}" data-keeper="${c.id}">Inspect &amp; join #${e.id} into this</button>
+      </div>`).join('');
+    return `
+      <article class="vw-card" data-merge-group="${e.id}">
+        <header class="vw-card-head"><span class="vw-lemma">${esc(e.lexeme)}</span>${e.empty ? '<span class="vw-badge vw-badge-ok">empty</span>' : ''}</header>
+        <div class="vw-merge-cols">
+          <div class="vw-merge-col vw-merge-from"><div class="vw-meta">Capital initial, tagged N</div>${this.mergeEntryHtml(e)}
+            <button class="btn btn-secondary btn-sm" data-action="merge-open" data-id="${e.id}">Open to edit</button></div>
+          <div class="vw-merge-arrow">→</div>
+          <div class="vw-merge-targets">${candidates || '<div class="vw-meta">No lower-case or other-POS entry of this word. Open it to change its POS (for example to Prop) or its headword.</div>'}</div>
+        </div>
+        <div data-slot="merge-detail" data-absorbed="${e.id}"></div>
+      </article>`;
+  }
+
   async loadMergeCandidates(append) {
     if (!this.requireApi()) return;
+    if (this.merge.mode === CAPITALISED_NOUN && !this.merge.language.trim()) {
+      return this.showToast('Enter a language code first (for example fin): whether a capital initial is wrong depends on the language.', 'error');
+    }
     await this.guard(async () => {
       const { total, groups } = await this.api.mergeCandidates({
-        language: this.merge.language.trim(), limit: 10, offset: append ? this.merge.groups.length : 0
+        language: this.merge.language.trim(), mode: this.merge.mode, limit: 10, offset: append ? this.merge.groups.length : 0
       });
       this.merge.groups = append ? [...this.merge.groups, ...groups] : groups;
       this.merge.total = total;
@@ -954,7 +989,7 @@ export class VerddPanel {
   }
 
   findMergeGroup(absorbedId) {
-    return this.merge.groups.find(g => g.undetermined.id === absorbedId);
+    return this.merge.groups.find(g => groupEntry(g).id === absorbedId);
   }
 
   closeMergeDetail(absorbedId) {
@@ -977,22 +1012,23 @@ export class VerddPanel {
     const group = this.findMergeGroup(absorbedId);
     if (!group) return;
     const keeper = group.candidates.find(c => c.id === keeperId);
+    const options = this.mergeOptions(groupEntry(group), keeper);
     await this.guard(async () => {
       const [report, outgoing, incoming, keeperOutgoing] = await Promise.all([
-        this.api.mergeLexeme(absorbedId, keeperId, { dryRun: true }),
+        this.api.mergeLexeme(absorbedId, keeperId, { dryRun: true, ...options }),
         this.api.relationsFrom(absorbedId), this.api.relationsTo(absorbedId), this.api.relationsFrom(keeperId)
       ]);
-      this.merge.previews[`${absorbedId}>${keeperId}`] = report;
+      this.merge.previews[`${absorbedId}>${keeperId}`] = { report, options };
       const keeperKeys = new Set(keeperOutgoing.map(r => `${r.type}|${r.lexeme_to}`));
       const slot = this.root.querySelector(`[data-slot="merge-detail"][data-absorbed="${absorbedId}"]`);
       slot.innerHTML = `
         <div class="vw-merge-detail">
           <div class="vw-merge-cols vw-merge-compare">
-            <div><h5>#${absorbedId} ${esc(group.undetermined.pos || 'no POS')} — absorbed</h5>
+            <div><h5>#${absorbedId} ${esc(groupEntry(group).pos || 'no POS')} — absorbed</h5>
               ${this.relationLines(outgoing, keeperKeys, 'out')}${incoming.length ? `<div class="vw-meta">Pointing to it:</div>${this.relationLines(incoming, null, 'in')}` : ''}</div>
             <div><h5>#${keeperId} ${esc(keeper.pos)} — kept</h5>${this.relationLines(keeperOutgoing, null, 'out')}</div>
           </div>
-          <ul class="vw-merge-report">${describeMerge(report).map(line => `<li>${esc(line)}</li>`).join('')}</ul>
+          ${this.mergeDifferenceNote(groupEntry(group), keeper)}<ul class="vw-merge-report">${describeMerge(report).map(line => `<li>${esc(line)}</li>`).join('')}</ul>
           <div class="vw-actions">
             <button class="btn btn-primary btn-sm" data-action="merge-confirm" data-absorbed="${absorbedId}" data-keeper="${keeperId}">Join #${absorbedId} into #${keeperId}</button>
             <button class="btn btn-secondary btn-sm" data-action="merge-cancel" data-absorbed="${absorbedId}">Cancel</button>
@@ -1005,21 +1041,35 @@ export class VerddPanel {
     const group = this.findMergeGroup(absorbedId);
     const keeper = group?.candidates.find(c => c.id === keeperId);
     if (!keeper) return;
-    if (!this.confirmAction(`#${absorbedId} (${group.undetermined.pos || 'no POS'}) is empty. Delete it and keep #${keeperId} (${keeper.pos})?`)) return;
-    await this.performMerge(absorbedId, keeperId);
+    if (!this.confirmAction(`#${absorbedId} (${groupEntry(group).pos || 'no POS'}) is empty. Delete it and keep #${keeperId} (${keeper.pos})?`)) return;
+    await this.performMerge(absorbedId, keeperId, this.mergeOptions(groupEntry(group), keeper));
   }
 
   async confirmMerge(absorbedId, keeperId) {
-    const report = this.merge.previews[`${absorbedId}>${keeperId}`];
+    const { report, options } = this.merge.previews[`${absorbedId}>${keeperId}`] || {};
     const summary = report ? describeMerge(report).join('\n') : '';
-    if (!this.confirmAction(`Join #${absorbedId} into #${keeperId}? #${absorbedId} is deleted afterwards.\n\n${summary}`)) return;
-    await this.performMerge(absorbedId, keeperId);
+    const differs = options?.allowDifferentHeadword && report ? `\nThe headwords differ: "${report.absorbed.lexeme}" and "${report.into.lexeme}"; the kept entry's headword stays.\n` : '';
+    if (!this.confirmAction(`Join #${absorbedId} into #${keeperId}? #${absorbedId} is deleted afterwards.${differs}\n${summary}`)) return;
+    await this.performMerge(absorbedId, keeperId, options);
   }
 
-  async performMerge(absorbedId, keeperId) {
+  /** Merge options for an absorbed/kept pair: the user confirms differing headwords or POS through the preview and the dialog. */
+  mergeOptions(absorbed, keeper) {
+    const verdict = mergeVerdict(absorbed, keeper, { allowDifferentPos: this.merge.mode === CAPITALISED_NOUN });
+    return { allowDifferentHeadword: Boolean(verdict.differentHeadword), allowDifferentPos: Boolean(verdict.differentPos) };
+  }
+
+  mergeDifferenceNote(absorbed, keeper) {
+    const notes = [];
+    if (absorbed.lexeme !== keeper.lexeme) notes.push(`headwords differ ("${absorbed.lexeme}" and "${keeper.lexeme}"): the kept entry's stays`);
+    if (!isUndetermined(absorbed.pos) && !isUndetermined(keeper.pos) && absorbed.pos !== keeper.pos) notes.push(`parts of speech differ (${absorbed.pos} and ${keeper.pos}): the kept entry's stays`);
+    return notes.length ? `<div class="vw-problems">Note: ${esc(notes.join('; '))}.</div>` : '';
+  }
+
+  async performMerge(absorbedId, keeperId, options = {}) {
     await this.guard(async () => {
-      await this.api.mergeLexeme(absorbedId, keeperId);
-      this.merge.groups = this.merge.groups.filter(g => g.undetermined.id !== absorbedId);
+      await this.api.mergeLexeme(absorbedId, keeperId, options);
+      this.merge.groups = this.merge.groups.filter(g => groupEntry(g).id !== absorbedId);
       this.merge.total = Math.max(0, this.merge.total - 1);
       this.renderMergeBody();
       this.showToast(`Joined #${absorbedId} into #${keeperId}.`, 'success');
@@ -1037,7 +1087,7 @@ export class VerddPanel {
 
   onInput(event) {
     const el = event.target;
-    if (el.dataset.mergeFilter) {
+    if (el.dataset.mergeFilter === 'language') {
       this.merge.language = el.value;
       return;
     }
@@ -1078,6 +1128,12 @@ export class VerddPanel {
       if (!row) return;
       row[el.dataset.field] = el.value === '' ? null : Number(el.value);
       this.refreshCard(row);
+    } else if (el.dataset.mergeFilter === 'mode') {
+      this.merge.mode = el.value;
+      this.merge.groups = [];
+      this.merge.total = 0;
+      this.merge.loaded = false;
+      this.renderMerge();
     } else if (el.dataset.filter === 'contains') {
       this.browse.filters.contains = el.checked;
     }
@@ -1117,6 +1173,7 @@ export class VerddPanel {
       'add-example': () => this.addExample(id),
       'merge-find': () => this.loadMergeCandidates(false),
       'merge-more': () => this.loadMergeCandidates(true),
+      'merge-open': () => { this.setTab('browse'); this.openLexeme(Number(el.dataset.id)); },
       'merge-inspect': () => this.inspectMerge(Number(el.dataset.absorbed), Number(el.dataset.keeper)),
       'merge-absorb': () => this.absorbEmpty(Number(el.dataset.absorbed), Number(el.dataset.keeper)),
       'merge-confirm': () => this.confirmMerge(Number(el.dataset.absorbed), Number(el.dataset.keeper)),
