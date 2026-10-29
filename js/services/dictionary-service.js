@@ -131,9 +131,13 @@ export function normalizeCustomPos(pos) {
   return CUSTOM_POS_CHOICES.includes(mapped) ? mapped : '';
 }
 
+/** Id prefix of dictionary transducers the user uploaded (private: kept only in this browser). */
+export const UPLOADED_DICT_PREFIX = 'custom_dict_';
+
 export class DictionaryService {
   constructor() {
     this.dictGenerators = []; // Array of Hfst instances (generator-norm, analyser)
+    this.uploadedDicts = new Map(); // id -> { hfst, name } of the uploaded private dictionaries
     this.activeDictId = 'uralic_full_dictionary';
     this.activeDictName = 'Uralic Multi-Language Dictionary Transducers';
     this.isLoaded = false;
@@ -176,6 +180,30 @@ export class DictionaryService {
       }
     } catch (e) {
       // Safe to ignore if IndexedDB is empty
+    }
+
+    // Private dictionaries the user uploaded earlier (kept in this browser): newest first, ahead of the packaged ones
+    try {
+      const uploaded = (await storageService.getAllModels())
+        .filter((m) => m && m.type === 'dictionary' && String(m.id).startsWith(UPLOADED_DICT_PREFIX) && m.buffer)
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      this.uploadedDicts.clear();
+      for (const m of uploaded) {
+        try {
+          this.uploadedDicts.set(m.id, { hfst: HfstInputStream.fromBuffer(m.buffer).read(), name: m.name });
+        } catch (err) {
+          console.warn(`Could not read the saved dictionary "${m.name}":`, err.message);
+        }
+      }
+      const loaded = uploaded.filter((m) => this.uploadedDicts.has(m.id));
+      if (loaded.length) {
+        this.dictGenerators = [...loaded.map((m) => this.uploadedDicts.get(m.id).hfst), ...this.dictGenerators];
+        this.activeDictId = loaded[0].id;
+        this.activeDictName = loaded[0].name;
+        this.isLoaded = true;
+      }
+    } catch (e) {
+      // no saved uploads
     }
 
     for (const path of this.packagedDictPaths) {
@@ -280,6 +308,10 @@ export class DictionaryService {
    */
   async loadFromBuffer(buffer, id, name, saveToDb = true) {
     const hfst = HfstInputStream.fromBuffer(buffer).read();
+    // uploading the same file name again replaces the earlier copy instead of stacking up
+    const previous = this.uploadedDicts.get(id);
+    if (previous) this.dictGenerators = this.dictGenerators.filter((g) => g !== previous.hfst);
+    if (String(id).startsWith(UPLOADED_DICT_PREFIX)) this.uploadedDicts.set(id, { hfst, name });
     this.dictGenerators.unshift(hfst);
     this.activeDictId = id;
     this.activeDictName = name;
@@ -289,6 +321,33 @@ export class DictionaryService {
       await storageService.saveModel(id, name, 'dictionary', buffer);
     }
     return true;
+  }
+
+  /** Id for an uploaded private dictionary: the same file name always gives the same id (a new upload replaces it). */
+  uploadedDictId(fileName) {
+    return `${UPLOADED_DICT_PREFIX}${String(fileName || 'dictionary').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '_')}`;
+  }
+
+  /** The private dictionaries uploaded in this browser: [{ id, name, size, timestamp }], newest first. */
+  async listUploadedDictionaries() {
+    return (await storageService.getAllModels())
+      .filter((m) => m && m.type === 'dictionary' && String(m.id).startsWith(UPLOADED_DICT_PREFIX))
+      .map((m) => ({ id: m.id, name: m.name, size: m.size || (m.buffer ? m.buffer.byteLength : 0), timestamp: m.timestamp || 0 }))
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }
+
+  /** Forgets an uploaded private dictionary: removed from this browser and from the lookups. */
+  async removeUploadedDictionary(id) {
+    if (!String(id).startsWith(UPLOADED_DICT_PREFIX)) throw new Error('Not an uploaded dictionary');
+    const loaded = this.uploadedDicts.get(id);
+    if (loaded) this.dictGenerators = this.dictGenerators.filter((g) => g !== loaded.hfst);
+    this.uploadedDicts.delete(id);
+    await storageService.deleteModel(id);
+    if (this.activeDictId === id) {
+      const next = [...this.uploadedDicts.entries()][0];
+      this.activeDictId = next ? next[0] : null;
+      this.activeDictName = next ? next[1].name : `Uralic Dictionaries (${this.dictGenerators.length} transducers loaded)`;
+    }
   }
 
   /**
@@ -750,6 +809,7 @@ export class DictionaryService {
         if (!trimmed || trimmed.startsWith('#')) continue;
 
         const cols = trimmed.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''));
+        if (cols.length >= 2 && /^lemma$/i.test(cols[0]) && /^gloss$/i.test(cols[1])) continue; // the header row (as LangJack exports it)
         if (cols.length >= 2) {
           const lemma = cols[0];
           const rawGloss = cols[1];

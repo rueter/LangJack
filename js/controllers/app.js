@@ -3243,10 +3243,45 @@ export class WorkbenchApp {
       if (customInput) customInput.style.display = 'none';
     }
     await this.renderCustomEntriesTable();
+    await this.renderUploadedDicts();
   }
 
   closeModal() {
     this.settingsModal.classList.remove('open');
+  }
+
+  /** Lists the private dictionaries uploaded in this browser, each with a Remove button. */
+  async renderUploadedDicts() {
+    const box = document.getElementById('uploadedDictList');
+    if (!box) return;
+    const list = await dictionaryService.listUploadedDictionaries();
+    box.replaceChildren();
+    if (!list.length) return;
+    const title = document.createElement('div');
+    title.style.color = 'var(--text-muted)';
+    title.textContent = 'Your uploaded dictionaries (kept only in this browser, newest first):';
+    box.appendChild(title);
+    for (const d of list) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 2px 0;';
+      const label = document.createElement('span');
+      const size = d.size >= 1048576 ? `${(d.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(d.size / 1024))} KB`;
+      label.textContent = `${d.name} · ${size} · ${new Date(d.timestamp).toLocaleString()}`;
+      const remove = document.createElement('button');
+      remove.className = 'btn-remove btn-sm';
+      remove.title = 'Remove this dictionary from this browser';
+      remove.textContent = '🗑️';
+      remove.addEventListener('click', async () => {
+        if (!this.confirmAction(`Remove "${d.name}" from this browser?`)) return;
+        await dictionaryService.removeUploadedDictionary(d.id);
+        this.updateModelStatusDisplay();
+        await this.renderUploadedDicts();
+        if (this.sentences.length > 0) this.relookupAllGlosses();
+        this.showToast(`Removed "${d.name}".`, 'info');
+      });
+      row.append(label, remove);
+      box.appendChild(row);
+    }
   }
 
   updateModelStatusDisplay() {
@@ -3582,10 +3617,11 @@ export class WorkbenchApp {
 
     try {
       const buffer = await file.arrayBuffer();
-      const id = `custom_dict_${Date.now()}`;
+      const id = dictionaryService.uploadedDictId(file.name); // the same file name replaces the earlier upload
       await dictionaryService.loadFromBuffer(buffer, id, file.name, true);
       this.updateModelStatusDisplay();
-      this.showToast(`Loaded custom dictionary "${file.name}"!`, 'success');
+      await this.renderUploadedDicts();
+      this.showToast(`Loaded private dictionary "${file.name}". It stays in this browser and is used in every session until you remove it.`, 'success');
       if (this.sentences.length > 0) this.relookupAllGlosses();
     } catch (err) {
       this.showToast('Error loading dictionary: ' + err.message, 'error');

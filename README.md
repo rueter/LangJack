@@ -82,6 +82,7 @@ The large morphological models are not stored in this repository. On first use L
      - Interactive entry editor (Lemma, POS, Target Lang ISO, Gloss). Both parts of speech (source word and target gloss) are required for new entries; entries lacking either (for example imported ones) are flagged and can be completed in the POS and Gloss POS columns. TSV export adds a `target_pos` column (7th), which TSV import reads again (JSON uses `tgt_pos`). In the Ve'rdd Send tab the gloss POS becomes the translation POS.
      - Import custom dictionaries from **TSV**, **CSV**, **JSON**, or **Lexc** (`src_lemma:tgt_gloss #;`).
      - Export custom dictionary as TSV.
+   - **Your own private dictionaries**: under **Models & Dictionaries**, *2. Dictionary Transducer* has **📁 Upload .hfstol Dictionary** for a UralicNLP-style dictionary FST (the format of `uralicnlpmodels/nightly`), and *3. Custom User Lexicon* has **📥 Import TSV / CSV / JSON / Lexc** for the TSV format described below. Both stay only in your browser (IndexedDB), are never sent anywhere and are not part of the repository. An uploaded FST is used first in lookups, is loaded again in every later session, is listed under the upload button (uploading the same file name replaces it) and can be removed there; TSV entries appear in the lexicon table, where they can be edited and deleted.
    - **Transducer Models**:
      - Comes bundled with starter transducers (`bundled_analyser.hfstol` and `bundled_dict.hfstol`).
      - One-click download with automatic multi-mirror failover (`raw.githubusercontent.com`, jsDelivr CDN, and `models.uralicnlp.com`) for full nightly models (`myv`, `fin`, `sms`, `kpv`, `koi`, `mdf`, `mhr`, `mrj`, `fkv`, `olo`, etc.) and the full multi-language dictionary transducer.
@@ -201,6 +202,7 @@ node test/test_reading_picker.js
 node test/test_manual_editing.js
 node test/test_reading_order.js
 node test/test_custom_gloss_pos.js
+node test/test_private_dictionaries.js
 ```
 
 Some suites load analyzers from `models/`. Those files are not in the repository (see *Try it online*): download them first through the app, or copy them into `models/`.
