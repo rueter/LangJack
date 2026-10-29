@@ -507,7 +507,8 @@ export function draftsFromSentences(sentences, translations, srcLang, defaultTgt
 
       const glossText = (token.customGloss || token.selectedGloss?.gloss || '').trim();
       const tgtLang = (token.customGlossLang || token.selectedGloss?.lang || fallbackLang || '').toLowerCase();
-      const pos = toVerddPos(reading.pos || '', knownPos);
+      // a POS chosen for the token's custom gloss wins over the reading's
+      const pos = toVerddPos((token.customGloss && token.customGlossPos) || reading.pos || '', knownPos);
       const sentenceText = (sentence.text || '').trim();
       const translated = usable.find(t => (t.lang || '').toLowerCase() === tgtLang);
 

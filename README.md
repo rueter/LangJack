@@ -38,7 +38,7 @@ The large morphological models are not stored in this repository. On first use L
    - Multi-language gloss pills display which translations are available across different target languages.
    - **Select Gloss or Add Own**:
      - Click candidate gloss chips or select from dropdown.
-     - Add custom gloss with required ISO language code.
+     - Add custom gloss with required ISO language code and a required part of speech (N, V, A, Adv, Pron, Po, … the Ve'rdd set; preselected from the reading). A gloss cannot be saved without one.
      - Option to auto-save custom glosses to your persistent custom dictionary.
 
 4. **Multiple Sentence Translations (ISO language tagged)**
@@ -79,7 +79,7 @@ The large morphological models are not stored in this repository. On first use L
 
 7. **Custom Dictionaries & Transducer Management**:
    - **Add Own Dictionaries**:
-     - Interactive entry editor (Lemma, POS, Target Lang ISO, Gloss).
+     - Interactive entry editor (Lemma, POS, Target Lang ISO, Gloss). The POS is required for new entries; entries without one (for example imported ones) are flagged and a POS can be chosen in the POS column.
      - Import custom dictionaries from **TSV**, **CSV**, **JSON**, or **Lexc** (`src_lemma:tgt_gloss #;`).
      - Export custom dictionary as TSV.
    - **Transducer Models**:
@@ -200,6 +200,7 @@ node test/test_feature_inventory.js
 node test/test_reading_picker.js
 node test/test_manual_editing.js
 node test/test_reading_order.js
+node test/test_custom_gloss_pos.js
 ```
 
 Some suites load analyzers from `models/`. Those files are not in the repository (see *Try it online*): download them first through the app, or copy them into `models/`.

@@ -9,7 +9,7 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
 }
 
 import { analyzerService, normalizeLangCode } from '../services/analyzer-service.js';
-import { dictionaryService, splitGlossItem } from '../services/dictionary-service.js';
+import { dictionaryService, splitGlossItem, CUSTOM_POS_CHOICES, normalizeCustomPos } from '../services/dictionary-service.js';
 import { treebankService } from '../services/treebank-service.js';
 import { ConlluExporter } from '../services/conllu-exporter.js';
 import { InterlinearExporter } from '../services/interlinear-exporter.js';
@@ -1594,13 +1594,37 @@ export class WorkbenchApp {
     langInput.title = 'Target ISO 639 language code (e.g. eng, fin, rus)';
     langInput.value = tok.customGlossLang || (tok.selectedGloss ? tok.selectedGloss.lang : (this.targetLang !== 'all' ? this.targetLang : 'eng'));
 
+    // A gloss needs a part of speech (it is what a later entry in Ve'rdd needs): preselected from the reading when there is one
+    const posSelect = document.createElement('select');
+    posSelect.className = 'custom-pos-input';
+    posSelect.title = 'Part of speech of the gloss (required)';
+    const posPlaceholder = document.createElement('option');
+    posPlaceholder.value = '';
+    posPlaceholder.textContent = 'POS…';
+    posSelect.appendChild(posPlaceholder);
+    for (const choice of CUSTOM_POS_CHOICES) {
+      const opt = document.createElement('option');
+      opt.value = choice;
+      opt.textContent = choice;
+      posSelect.appendChild(opt);
+    }
+    posSelect.value = normalizeCustomPos(tok.customGlossPos) || normalizeCustomPos(activeReading ? activeReading.pos : '');
+
     const saveGlossBtn = document.createElement('button');
     saveGlossBtn.className = 'btn btn-secondary btn-sm';
     saveGlossBtn.textContent = '✓';
-    saveGlossBtn.title = 'Save custom gloss with ISO language';
+    saveGlossBtn.title = 'Save custom gloss with ISO language and part of speech';
 
     const commitCustomGloss = () => {
       const val = customInput.value.trim();
+      const posVal = normalizeCustomPos(posSelect.value);
+      if (val && !posVal) {
+        posSelect.classList.add('needs-value');
+        posSelect.focus();
+        this.showToast('Choose a part of speech for the gloss before saving it.', 'error');
+        return;
+      }
+      posSelect.classList.remove('needs-value');
       const langVal = (langInput.value.trim() || tok.customGlossLang || (this.targetLang !== 'all' ? this.targetLang : 'eng')).toLowerCase();
       if (val) {
         this.activeTokenInfo = { sIdx, tIdx };
@@ -1608,6 +1632,7 @@ export class WorkbenchApp {
         const primaryGloss = parts[0] || val;
         tok.customGloss = primaryGloss;
         tok.customGlossLang = langVal;
+        tok.customGlossPos = posVal;
         tok.selectedGloss = { gloss: primaryGloss, lang: langVal, source: 'custom_user' };
         
         // Auto-save to custom dictionary in IndexedDB (splits multiple glosses if comma/semicolon delimited)
@@ -1615,11 +1640,11 @@ export class WorkbenchApp {
         dictionaryService.addCustomEntry({
           src_lang: this.srcLang,
           lemma,
-          pos: activeReading ? activeReading.pos : '',
+          pos: posVal,
           tgt_lang: langVal,
           gloss: val,
           notes: 'Added from workbench'
-        });
+        }, { requirePos: true }).then(() => this.renderCustomEntriesTable()).catch((err) => this.showToast(err.message, 'error'));
 
         for (const p of parts) {
           if (!tok.allGlosses.some(g => g.gloss.toLowerCase() === p.toLowerCase() && g.lang.toLowerCase() === langVal)) {
@@ -1641,6 +1666,7 @@ export class WorkbenchApp {
 
     customRow.appendChild(customInput);
     customRow.appendChild(langInput);
+    customRow.appendChild(posSelect);
     customRow.appendChild(saveGlossBtn);
     glossSection.appendChild(customRow);
 
@@ -3224,6 +3250,8 @@ export class WorkbenchApp {
     this.customEntriesTableBody.replaceChildren();
 
     if (entries.length === 0) {
+      const emptyHint = document.getElementById('customPosHint');
+      if (emptyHint) emptyHint.style.display = 'none';
       const tr = document.createElement('tr');
       const td = document.createElement('td');
       td.colSpan = 5;
@@ -3236,6 +3264,14 @@ export class WorkbenchApp {
       return;
     }
 
+    // Entries without a usable part of speech cannot go to Ve'rdd: say how many, and where to fix them
+    const hint = document.getElementById('customPosHint');
+    if (hint) {
+      const missing = dictionaryService.entriesMissingPos().length;
+      hint.style.display = missing ? 'block' : 'none';
+      hint.textContent = missing ? `${missing} entr${missing === 1 ? 'y has' : 'ies have'} no part of speech yet. Choose one in the POS column: a gloss needs it, for example to be sent to Ve'rdd.` : '';
+    }
+
     entries.forEach(e => {
       const tr = document.createElement('tr');
 
@@ -3245,10 +3281,34 @@ export class WorkbenchApp {
       tdLemma.appendChild(strongLemma);
 
       const tdPos = document.createElement('td');
-      const posBadge = document.createElement('span');
-      posBadge.className = 'tag-badge upos';
-      posBadge.textContent = e.pos || '—';
-      tdPos.appendChild(posBadge);
+      const posPick = document.createElement('select');
+      posPick.className = 'custom-pos-input';
+      const posNow = normalizeCustomPos(e.pos);
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'POS needed…';
+      posPick.appendChild(placeholder);
+      for (const choice of CUSTOM_POS_CHOICES) {
+        const opt = document.createElement('option');
+        opt.value = choice;
+        opt.textContent = choice;
+        posPick.appendChild(opt);
+      }
+      posPick.value = posNow;
+      if (!posNow) {
+        posPick.classList.add('needs-value');
+        posPick.title = e.pos ? `"${e.pos}" is not a known part of speech: choose one` : 'This entry has no part of speech yet: choose one';
+      }
+      posPick.addEventListener('change', async () => {
+        if (!posPick.value) { await this.renderCustomEntriesTable(); return; }
+        try {
+          await dictionaryService.updateCustomEntryPos(e.id, posPick.value);
+          await this.renderCustomEntriesTable();
+        } catch (err) {
+          this.showToast(err.message, 'error');
+        }
+      });
+      tdPos.appendChild(posPick);
 
       const tdGloss = document.createElement('td');
       tdGloss.textContent = e.gloss;
@@ -3284,16 +3344,28 @@ export class WorkbenchApp {
     if (!gloss || !gloss.trim()) return;
 
     const tgtLang = prompt('Enter 3-letter target ISO language code (e.g. eng, fin, rus):', this.targetLang || 'eng');
-    const pos = prompt('Enter Part of Speech (e.g. N, V, A, Adv):', 'N');
+
+    // The part of speech is required: ask until it is one of the known ones, or give up (cancel) without saving
+    let pos = '';
+    let suggestion = 'N';
+    while (!pos) {
+      const answer = prompt(`Part of speech of "${lemma.trim()}" (required). One of: ${CUSTOM_POS_CHOICES.join(', ')}`, suggestion);
+      if (answer === null) {
+        this.showToast('Entry not saved: a part of speech is required.', 'info');
+        return;
+      }
+      pos = normalizeCustomPos(answer);
+      suggestion = answer;
+    }
 
     await dictionaryService.addCustomEntry({
       src_lang: this.srcLang,
       lemma: lemma.trim(),
-      pos: (pos || '').trim(),
+      pos,
       tgt_lang: (tgtLang || 'eng').trim().toLowerCase(),
       gloss: gloss.trim(),
       notes: 'Manual entry'
-    });
+    }, { requirePos: true });
 
     await this.renderCustomEntriesTable();
     this.syncSourceLanguagesFromDictionary();

@@ -11,6 +11,7 @@ import { storageService } from './storage-service.js';
 import { normalizeLangCode, KNOWN_LANGUAGES } from './analyzer-service.js';
 import { stripGuessTags } from './tag-mapper.js';
 import { SpellRelaxService } from './spell-relax-service.js';
+import { VERDD_POS_FALLBACK, POS_UNDETERMINED, toVerddPos } from './verdd-api-service.js';
 
 export const FST_DICTIONARY_LANGUAGES = {
   vro: 'Võro',
@@ -114,6 +115,20 @@ export function splitGlossItem(rawGloss) {
   if (lastPart) results.push(lastPart);
 
   return results.filter(Boolean);
+}
+
+/**
+ * Parts of speech a custom gloss can have: the Ve'rdd set, so an entry can be sent there later. "UND" (undetermined)
+ * is not a part of speech, it means "not known yet", so it does not count.
+ */
+export const CUSTOM_POS_CHOICES = VERDD_POS_FALLBACK.filter((p) => p !== POS_UNDETERMINED);
+
+/** The canonical POS for what a user or an HFST tag gave ("n", "V", "Po"), or '' when it is no usable part of speech. */
+export function normalizeCustomPos(pos) {
+  const text = String(pos ?? '').trim();
+  if (!text) return '';
+  const mapped = toVerddPos(text, CUSTOM_POS_CHOICES);
+  return CUSTOM_POS_CHOICES.includes(mapped) ? mapped : '';
 }
 
 export class DictionaryService {
@@ -602,8 +617,13 @@ export class DictionaryService {
    * Adds custom dictionary entries and persists them.
    * Splits multi-gloss input into individual words or word sets.
    */
-  async addCustomEntry(entry) {
+  async addCustomEntry(entry, { requirePos = false } = {}) {
     if (!entry) return null;
+    if (requirePos) {
+      const pos = normalizeCustomPos(entry.pos);
+      if (!pos) throw new Error('A part of speech is required for a gloss (one of: ' + CUSTOM_POS_CHOICES.join(', ') + ').');
+      entry = { ...entry, pos };
+    }
     const glossParts = splitGlossItem(entry.gloss || '');
     if (glossParts.length > 1) {
       const items = glossParts.map(gp => ({ ...entry, gloss: gp }));
@@ -616,6 +636,22 @@ export class DictionaryService {
       await this.refreshCustomEntries();
       return saved;
     }
+  }
+
+  /** Custom entries that still lack a usable part of speech (typically imported ones). */
+  entriesMissingPos() {
+    return this.customEntriesCache.filter((e) => !normalizeCustomPos(e.pos));
+  }
+
+  /** Sets the part of speech of an existing custom entry (this is how entries without one are completed). */
+  async updateCustomEntryPos(id, pos) {
+    const clean = normalizeCustomPos(pos);
+    if (!clean) throw new Error('Choose a part of speech: ' + CUSTOM_POS_CHOICES.join(', '));
+    const entry = this.customEntriesCache.find((e) => e.id === id);
+    if (!entry) throw new Error('Unknown entry');
+    await storageService.addDictionaryEntry({ ...entry, pos: clean });
+    await this.refreshCustomEntries();
+    return clean;
   }
 
   /**
