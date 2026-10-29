@@ -16,6 +16,7 @@
  */
 
 import { TagMapper, stripGuessTags } from './tag-mapper.js';
+import { normalizeGloss } from './gloss-format.js';
 
 export class VerddExporter {
   /**
@@ -161,7 +162,7 @@ export class VerddExporter {
           upos,
           srcLang: (srcLang || 'myv').toLowerCase(),
           tgtLang: (tgtLang || defaultTgtLang || 'eng').toLowerCase(),
-          gloss: gloss || '(no gloss selected)',
+          gloss: normalizeGloss(gloss) || '(no gloss selected)',
           form: tok.form,
           morph,
           exampleSentence: sent.text || '',

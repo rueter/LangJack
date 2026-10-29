@@ -11,6 +11,8 @@
  * (same lemma, POS and language) apart.
  */
 
+import { normalizeGloss } from './gloss-format.js';
+
 export const MAX_LEXEME = 250;
 export const MAX_POS = 25;
 export const MAX_EXAMPLE = 250;
@@ -505,7 +507,7 @@ export function draftsFromSentences(sentences, translations, srcLang, defaultTgt
       const lemma = (token.lemma || reading.lemma || token.form || '').trim();
       if (!lemma) return;
 
-      const glossText = (token.customGloss || token.selectedGloss?.gloss || '').trim();
+      const glossText = normalizeGloss(token.customGloss || token.selectedGloss?.gloss || '');
       const tgtLang = (token.customGlossLang || token.selectedGloss?.lang || fallbackLang || '').toLowerCase();
       // a POS chosen for the token's custom gloss wins over the reading's
       const pos = toVerddPos((token.customGloss && token.customGlossPos) || reading.pos || '', knownPos);

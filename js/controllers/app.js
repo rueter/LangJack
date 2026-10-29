@@ -360,6 +360,7 @@ export class WorkbenchApp {
     this.addEntryBtn = document.getElementById('addEntryBtn');
     this.importDictBtn = document.getElementById('importDictBtn');
     this.exportDictBtn = document.getElementById('exportDictBtn');
+    this.exportApertiumBtn = document.getElementById('exportApertiumBtn');
 
     // Treebank Accumulator Elements
     this.saveTreebankBtn = document.getElementById('saveTreebankBtn');
@@ -528,6 +529,7 @@ export class WorkbenchApp {
     this.addEntryBtn.addEventListener('click', () => this.handleAddCustomEntry());
     this.importDictBtn.addEventListener('click', () => this.handleImportDictionary());
     this.exportDictBtn.addEventListener('click', () => this.handleExportDictionary());
+    this.exportApertiumBtn.addEventListener('click', () => this.handleExportDictionary('apertium'));
 
     // Treebank Accumulator Events
     this.saveTreebankBtn?.addEventListener('click', () => this.handleSaveCompletedTreebank(false));
@@ -3459,13 +3461,14 @@ export class WorkbenchApp {
     input.click();
   }
 
-  async handleExportDictionary() {
-    const tsv = await dictionaryService.exportCustomDictionary('tsv');
-    const blob = new Blob([tsv], { type: 'text/tab-separated-values' });
+  async handleExportDictionary(format = 'tsv') {
+    const apertium = format === 'apertium';
+    const tsv = await dictionaryService.exportCustomDictionary(format);
+    const blob = new Blob([tsv], { type: apertium ? 'application/xml' : 'text/tab-separated-values' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `custom_dictionary_${this.srcLang}.tsv`;
+    a.download = `custom_dictionary_${this.srcLang}.${apertium ? 'dix' : 'tsv'}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

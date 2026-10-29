@@ -6,6 +6,7 @@
 import { TagMapper, stripGuessTags } from './tag-mapper.js';
 import { analyzerService } from './analyzer-service.js';
 import { sortMiscSegments } from './conllu-parser.js';
+import { formatGloss } from './gloss-format.js';
 import { parseFeats, featsToString } from './conllu-enhance.js';
 
 /** A token made only of punctuation or symbols (the analyzer's own isPunct flag covers just a few marks). */
@@ -176,7 +177,7 @@ export class ConlluExporter {
         const glossLang = tok.customGlossLang || (tok.selectedGloss ? tok.selectedGloss.lang : '');
 
         if (gloss) {
-          const cleanGloss = gloss.replace(/\s+/g, '_');
+          const cleanGloss = formatGloss(gloss, 'ud');
           if (glossLang) {
             miscParts.push(`Gloss[${glossLang}]=${cleanGloss}`);
           } else {

@@ -11,6 +11,8 @@
  * - Pure functions only; storage and the dictionary live in conllu-import-service.js.
  */
 
+import { formatGloss } from './gloss-format.js';
+
 export const CONLLU_COLUMNS = ['id', 'form', 'lemma', 'upos', 'xpos', 'feats', 'head', 'deprel', 'deps', 'misc'];
 const MISC_COL = CONLLU_COLUMNS.indexOf('misc');
 
@@ -504,7 +506,7 @@ export function detectGlossConvention(parsed) {
     counts,
     mixed: keys.length > 1,
     total,
-    spaceChar: underscored > dotted ? '_' : (dotted > 0 ? '.' : '_')
+    spaceChar: dotted > underscored ? '.' : '-'
   };
 }
 
@@ -524,7 +526,7 @@ export function findExistingGloss(miscCell, lang) {
   }) || null;
 }
 
-/** Makes a dictionary gloss safe for a MISC value (no spaces, pipes, tabs); spaces become `spaceChar`. */
-export function formatGlossValue(gloss, spaceChar = '_') {
-  return String(gloss || '').trim().replace(/[|\t\r\n]/g, ' ').replace(/\s+/g, spaceChar);
+/** Makes a dictionary gloss safe for a MISC value (no spaces, pipes, tabs); spaces become `spaceChar` (hyphen by default, as in Gloss[ISO]=word-word). */
+export function formatGlossValue(gloss, spaceChar = '-') {
+  return formatGloss(gloss, 'ud', spaceChar);
 }

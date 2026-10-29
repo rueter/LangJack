@@ -10,6 +10,7 @@ import { HfstInputStream } from '../lib/hfst/core.js';
 import { storageService } from './storage-service.js';
 import { normalizeLangCode, KNOWN_LANGUAGES } from './analyzer-service.js';
 import { stripGuessTags } from './tag-mapper.js';
+import { formatGloss } from './gloss-format.js';
 import { SpellRelaxService } from './spell-relax-service.js';
 import { VERDD_POS_FALLBACK, POS_UNDETERMINED, toVerddPos } from './verdd-api-service.js';
 
@@ -933,6 +934,7 @@ export class DictionaryService {
     if (format === 'json') {
       return JSON.stringify(entries, null, 2);
     }
+    if (format === 'apertium') return this.apertiumBidix(entries);
     const header = ['lemma', 'gloss', 'target_lang', 'pos', 'source_lang', 'notes', 'target_pos'].join('\t');
     const rows = entries.map(e => [
       e.lemma,
@@ -944,6 +946,29 @@ export class DictionaryService {
       e.tgt_pos || ''
     ].join('\t'));
     return [header, ...rows].join('\n');
+  }
+
+  /**
+   * Custom entries as an Apertium bilingual dictionary (.dix): blanks inside a word are written <b/>.
+   * Symbol names are the usual Apertium ones (n, vblex, adj ...); a POS we have no name for becomes its lowercase self.
+   */
+  apertiumBidix(entries) {
+    const SYM = {
+      n: 'n', noun: 'n', propn: 'np', prop: 'np', v: 'vblex', verb: 'vblex', a: 'adj', adj: 'adj',
+      adv: 'adv', pron: 'prn', num: 'num', adp: 'pr', po: 'pr', pr: 'pr', cc: 'cnjcoo', cconj: 'cnjcoo',
+      cs: 'cnjsub', sconj: 'cnjsub', interj: 'ij', intj: 'ij', det: 'det', aux: 'vaux', part: 'part'
+    };
+    const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // escape the text, then write the blank element (which formatGloss produced) unescaped
+    const side = (text, pos) => {
+      const marked = formatGloss(text, 'apertium', '\u0000');
+      const sym = SYM[String(pos || '').toLowerCase()] || String(pos || '').toLowerCase();
+      return marked.split('\u0000').map(esc).join('<b/>') + (sym ? `<s n="${esc(sym)}"/>` : '');
+    };
+    const body = entries.map((e) =>
+      `    <e><p><l>${side(e.lemma, e.pos)}</l><r>${side(e.gloss, e.tgt_pos || e.pos)}</r></p></e>`);
+    return ['<?xml version="1.0" encoding="UTF-8"?>', '<dictionary>', '  <section id="main" type="standard">', ...body,
+      '  </section>', '</dictionary>', ''].join('\n');
   }
 
   /**
