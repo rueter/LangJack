@@ -1594,37 +1594,45 @@ export class WorkbenchApp {
     langInput.title = 'Target ISO 639 language code (e.g. eng, fin, rus)';
     langInput.value = tok.customGlossLang || (tok.selectedGloss ? tok.selectedGloss.lang : (this.targetLang !== 'all' ? this.targetLang : 'eng'));
 
-    // A gloss needs a part of speech (it is what a later entry in Ve'rdd needs): preselected from the reading when there is one
-    const posSelect = document.createElement('select');
-    posSelect.className = 'custom-pos-input';
-    posSelect.title = 'Part of speech of the gloss (required)';
-    const posPlaceholder = document.createElement('option');
-    posPlaceholder.value = '';
-    posPlaceholder.textContent = 'POS…';
-    posSelect.appendChild(posPlaceholder);
-    for (const choice of CUSTOM_POS_CHOICES) {
-      const opt = document.createElement('option');
-      opt.value = choice;
-      opt.textContent = choice;
-      posSelect.appendChild(opt);
-    }
-    posSelect.value = normalizeCustomPos(tok.customGlossPos) || normalizeCustomPos(activeReading ? activeReading.pos : '');
+    // A gloss needs a part of speech for the source word AND one for the target gloss (what a later Ve'rdd entry needs).
+    // The word's is preselected from the reading; the gloss's is always chosen by the user.
+    const makePosSelect = (placeholder, title, value) => {
+      const sel = document.createElement('select');
+      sel.className = 'custom-pos-input';
+      sel.title = title;
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = placeholder;
+      sel.appendChild(none);
+      for (const choice of CUSTOM_POS_CHOICES) {
+        const opt = document.createElement('option');
+        opt.value = choice;
+        opt.textContent = choice;
+        sel.appendChild(opt);
+      }
+      sel.value = value;
+      return sel;
+    };
+    const posSelect = makePosSelect('word POS…', 'Part of speech of the source word (required)',
+      normalizeCustomPos(tok.customGlossPos) || normalizeCustomPos(activeReading ? activeReading.pos : ''));
+    const tgtPosSelect = makePosSelect('gloss POS…', 'Part of speech of the target gloss (required)', normalizeCustomPos(tok.customGlossTgtPos));
 
     const saveGlossBtn = document.createElement('button');
     saveGlossBtn.className = 'btn btn-secondary btn-sm';
     saveGlossBtn.textContent = '✓';
-    saveGlossBtn.title = 'Save custom gloss with ISO language and part of speech';
+    saveGlossBtn.title = 'Save custom gloss with ISO language and the parts of speech of the word and of the gloss';
 
     const commitCustomGloss = () => {
       const val = customInput.value.trim();
       const posVal = normalizeCustomPos(posSelect.value);
-      if (val && !posVal) {
-        posSelect.classList.add('needs-value');
-        posSelect.focus();
-        this.showToast('Choose a part of speech for the gloss before saving it.', 'error');
+      const tgtPosVal = normalizeCustomPos(tgtPosSelect.value);
+      posSelect.classList.toggle('needs-value', Boolean(val) && !posVal);
+      tgtPosSelect.classList.toggle('needs-value', Boolean(val) && !tgtPosVal);
+      if (val && (!posVal || !tgtPosVal)) {
+        (!posVal ? posSelect : tgtPosSelect).focus();
+        this.showToast(`Choose a part of speech for ${!posVal && !tgtPosVal ? 'the source word and the target gloss' : !posVal ? 'the source word' : 'the target gloss'} before saving.`, 'error');
         return;
       }
-      posSelect.classList.remove('needs-value');
       const langVal = (langInput.value.trim() || tok.customGlossLang || (this.targetLang !== 'all' ? this.targetLang : 'eng')).toLowerCase();
       if (val) {
         this.activeTokenInfo = { sIdx, tIdx };
@@ -1633,6 +1641,7 @@ export class WorkbenchApp {
         tok.customGloss = primaryGloss;
         tok.customGlossLang = langVal;
         tok.customGlossPos = posVal;
+        tok.customGlossTgtPos = tgtPosVal;
         tok.selectedGloss = { gloss: primaryGloss, lang: langVal, source: 'custom_user' };
         
         // Auto-save to custom dictionary in IndexedDB (splits multiple glosses if comma/semicolon delimited)
@@ -1641,6 +1650,7 @@ export class WorkbenchApp {
           src_lang: this.srcLang,
           lemma,
           pos: posVal,
+          tgt_pos: tgtPosVal,
           tgt_lang: langVal,
           gloss: val,
           notes: 'Added from workbench'
@@ -1667,6 +1677,7 @@ export class WorkbenchApp {
     customRow.appendChild(customInput);
     customRow.appendChild(langInput);
     customRow.appendChild(posSelect);
+    customRow.appendChild(tgtPosSelect);
     customRow.appendChild(saveGlossBtn);
     glossSection.appendChild(customRow);
 
@@ -3254,7 +3265,7 @@ export class WorkbenchApp {
       if (emptyHint) emptyHint.style.display = 'none';
       const tr = document.createElement('tr');
       const td = document.createElement('td');
-      td.colSpan = 5;
+      td.colSpan = 6;
       td.style.textAlign = 'center';
       td.style.color = 'var(--text-muted)';
       td.style.padding = '12px';
@@ -3269,7 +3280,7 @@ export class WorkbenchApp {
     if (hint) {
       const missing = dictionaryService.entriesMissingPos().length;
       hint.style.display = missing ? 'block' : 'none';
-      hint.textContent = missing ? `${missing} entr${missing === 1 ? 'y has' : 'ies have'} no part of speech yet. Choose one in the POS column: a gloss needs it, for example to be sent to Ve'rdd.` : '';
+      hint.textContent = missing ? `${missing} entr${missing === 1 ? 'y lacks' : 'ies lack'} a part of speech for the source word or for the target gloss. Choose them in the POS and Gloss POS columns: both are required, for example to be sent to Ve'rdd.` : '';
     }
 
     entries.forEach(e => {
@@ -3280,35 +3291,41 @@ export class WorkbenchApp {
       strongLemma.textContent = e.lemma;
       tdLemma.appendChild(strongLemma);
 
-      const tdPos = document.createElement('td');
-      const posPick = document.createElement('select');
-      posPick.className = 'custom-pos-input';
-      const posNow = normalizeCustomPos(e.pos);
-      const placeholder = document.createElement('option');
-      placeholder.value = '';
-      placeholder.textContent = 'POS needed…';
-      posPick.appendChild(placeholder);
-      for (const choice of CUSTOM_POS_CHOICES) {
-        const opt = document.createElement('option');
-        opt.value = choice;
-        opt.textContent = choice;
-        posPick.appendChild(opt);
-      }
-      posPick.value = posNow;
-      if (!posNow) {
-        posPick.classList.add('needs-value');
-        posPick.title = e.pos ? `"${e.pos}" is not a known part of speech: choose one` : 'This entry has no part of speech yet: choose one';
-      }
-      posPick.addEventListener('change', async () => {
-        if (!posPick.value) { await this.renderCustomEntriesTable(); return; }
-        try {
-          await dictionaryService.updateCustomEntryPos(e.id, posPick.value);
-          await this.renderCustomEntriesTable();
-        } catch (err) {
-          this.showToast(err.message, 'error');
+      // part of speech of the source word and of the target gloss: both editable, both required
+      const posCell = (field, current, missingTitle, update) => {
+        const td = document.createElement('td');
+        const pick = document.createElement('select');
+        pick.className = 'custom-pos-input';
+        const now = normalizeCustomPos(current);
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'POS needed…';
+        pick.appendChild(placeholder);
+        for (const choice of CUSTOM_POS_CHOICES) {
+          const opt = document.createElement('option');
+          opt.value = choice;
+          opt.textContent = choice;
+          pick.appendChild(opt);
         }
-      });
-      tdPos.appendChild(posPick);
+        pick.value = now;
+        if (!now) {
+          pick.classList.add('needs-value');
+          pick.title = current ? `"${current}" is not a known part of speech: choose one` : missingTitle;
+        }
+        pick.addEventListener('change', async () => {
+          if (!pick.value) { await this.renderCustomEntriesTable(); return; }
+          try {
+            await update(e.id, pick.value);
+            await this.renderCustomEntriesTable();
+          } catch (err) {
+            this.showToast(err.message, 'error');
+          }
+        });
+        td.appendChild(pick);
+        return td;
+      };
+      const tdPos = posCell('pos', e.pos, 'This entry has no part of speech for the source word yet: choose one', (id, v) => dictionaryService.updateCustomEntryPos(id, v));
+      const tdTgtPos = posCell('tgt_pos', e.tgt_pos, 'This entry has no part of speech for the target gloss yet: choose one', (id, v) => dictionaryService.updateCustomEntryTgtPos(id, v));
 
       const tdGloss = document.createElement('td');
       tdGloss.textContent = e.gloss;
@@ -3331,7 +3348,7 @@ export class WorkbenchApp {
       });
       tdDel.appendChild(delBtn);
 
-      tr.append(tdLemma, tdPos, tdGloss, tdLang, tdDel);
+      tr.append(tdLemma, tdPos, tdGloss, tdTgtPos, tdLang, tdDel);
       this.customEntriesTableBody.appendChild(tr);
     });
   }
@@ -3345,23 +3362,30 @@ export class WorkbenchApp {
 
     const tgtLang = prompt('Enter 3-letter target ISO language code (e.g. eng, fin, rus):', this.targetLang || 'eng');
 
-    // The part of speech is required: ask until it is one of the known ones, or give up (cancel) without saving
-    let pos = '';
-    let suggestion = 'N';
-    while (!pos) {
-      const answer = prompt(`Part of speech of "${lemma.trim()}" (required). One of: ${CUSTOM_POS_CHOICES.join(', ')}`, suggestion);
-      if (answer === null) {
-        this.showToast('Entry not saved: a part of speech is required.', 'info');
-        return;
+    // Both parts of speech are required: ask until each is one of the known ones, or give up (cancel) without saving
+    const askPos = (what, who) => {
+      let pos = '';
+      let suggestion = 'N';
+      while (!pos) {
+        const answer = prompt(`Part of speech of ${what} "${who}" (required). One of: ${CUSTOM_POS_CHOICES.join(', ')}`, suggestion);
+        if (answer === null) return null;
+        pos = normalizeCustomPos(answer);
+        suggestion = answer;
       }
-      pos = normalizeCustomPos(answer);
-      suggestion = answer;
+      return pos;
+    };
+    const pos = askPos('the source word', lemma.trim());
+    const tgtPos = pos ? askPos('the target gloss', gloss.trim()) : null;
+    if (!pos || !tgtPos) {
+      this.showToast('Entry not saved: a part of speech is required for both the source word and the target gloss.', 'info');
+      return;
     }
 
     await dictionaryService.addCustomEntry({
       src_lang: this.srcLang,
       lemma: lemma.trim(),
       pos,
+      tgt_pos: tgtPos,
       tgt_lang: (tgtLang || 'eng').trim().toLowerCase(),
       gloss: gloss.trim(),
       notes: 'Manual entry'

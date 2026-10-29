@@ -509,16 +509,18 @@ export function draftsFromSentences(sentences, translations, srcLang, defaultTgt
       const tgtLang = (token.customGlossLang || token.selectedGloss?.lang || fallbackLang || '').toLowerCase();
       // a POS chosen for the token's custom gloss wins over the reading's
       const pos = toVerddPos((token.customGloss && token.customGlossPos) || reading.pos || '', knownPos);
+      // the POS chosen for the target gloss of a custom gloss (blank otherwise: Ve'rdd then reads it as the headword's)
+      const tgtPos = token.customGloss && token.customGlossTgtPos ? toVerddPos(token.customGlossTgtPos, knownPos) : '';
       const sentenceText = (sentence.text || '').trim();
       const translated = usable.find(t => (t.lang || '').toLowerCase() === tgtLang);
 
-      const key = [lemma, pos, tgtLang, glossText, sentenceText].join('\u0001');
+      const key = [lemma, pos, tgtLang, glossText, tgtPos, sentenceText].join('\u0001');
       if (seen.has(key)) return;
       seen.add(key);
 
       rows.push(newRow({
         srcLang: (srcLang || '').toLowerCase(), lemma, pos,
-        tgtLang, translation: glossText,
+        tgtLang, translation: glossText, tgtPos: tgtPos === POS_UNDETERMINED ? '' : tgtPos,
         exSrc: sentenceText, exTgt: translated ? translated.text.trim() : '',
         guessed: Boolean(reading.isGuessed), origin: 'analysis'
       }));

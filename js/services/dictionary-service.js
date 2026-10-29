@@ -620,9 +620,12 @@ export class DictionaryService {
   async addCustomEntry(entry, { requirePos = false } = {}) {
     if (!entry) return null;
     if (requirePos) {
+      // both the source word and the target gloss need a part of speech
       const pos = normalizeCustomPos(entry.pos);
-      if (!pos) throw new Error('A part of speech is required for a gloss (one of: ' + CUSTOM_POS_CHOICES.join(', ') + ').');
-      entry = { ...entry, pos };
+      const tgt_pos = normalizeCustomPos(entry.tgt_pos);
+      if (!pos) throw new Error('A part of speech is required for the source word (one of: ' + CUSTOM_POS_CHOICES.join(', ') + ').');
+      if (!tgt_pos) throw new Error('A part of speech is required for the target gloss (one of: ' + CUSTOM_POS_CHOICES.join(', ') + ').');
+      entry = { ...entry, pos, tgt_pos };
     }
     const glossParts = splitGlossItem(entry.gloss || '');
     if (glossParts.length > 1) {
@@ -638,20 +641,29 @@ export class DictionaryService {
     }
   }
 
-  /** Custom entries that still lack a usable part of speech (typically imported ones). */
+  /** Custom entries that still lack a usable part of speech for the source word or for the target gloss. */
   entriesMissingPos() {
-    return this.customEntriesCache.filter((e) => !normalizeCustomPos(e.pos));
+    return this.customEntriesCache.filter((e) => !normalizeCustomPos(e.pos) || !normalizeCustomPos(e.tgt_pos));
   }
 
-  /** Sets the part of speech of an existing custom entry (this is how entries without one are completed). */
-  async updateCustomEntryPos(id, pos) {
+  async _setEntryPos(id, field, pos, what) {
     const clean = normalizeCustomPos(pos);
-    if (!clean) throw new Error('Choose a part of speech: ' + CUSTOM_POS_CHOICES.join(', '));
+    if (!clean) throw new Error(`Choose a part of speech for the ${what}: ${CUSTOM_POS_CHOICES.join(', ')}`);
     const entry = this.customEntriesCache.find((e) => e.id === id);
     if (!entry) throw new Error('Unknown entry');
-    await storageService.addDictionaryEntry({ ...entry, pos: clean });
+    await storageService.addDictionaryEntry({ ...entry, [field]: clean });
     await this.refreshCustomEntries();
     return clean;
+  }
+
+  /** Sets the part of speech of the source word of an existing custom entry. */
+  updateCustomEntryPos(id, pos) {
+    return this._setEntryPos(id, 'pos', pos, 'source word');
+  }
+
+  /** Sets the part of speech of the target gloss of an existing custom entry. */
+  updateCustomEntryTgtPos(id, pos) {
+    return this._setEntryPos(id, 'tgt_pos', pos, 'target gloss');
   }
 
   /**
@@ -681,6 +693,7 @@ export class DictionaryService {
                 src_lang: (item.src_lang || defaultSrcLang).toLowerCase(),
                 lemma: item.lemma.trim(),
                 pos: (item.pos || '').trim(),
+                tgt_pos: (item.tgt_pos || '').trim(),
                 tgt_lang: (item.tgt_lang || defaultTgtLang).toLowerCase(),
                 gloss: p,
                 notes: item.notes || ''
@@ -743,6 +756,7 @@ export class DictionaryService {
           const tgt_lang = cols[2] || defaultTgtLang;
           const pos = cols[3] || '';
           const src_lang = cols[4] || defaultSrcLang;
+          const tgt_pos = cols[6] || ''; // optional 7th column: part of speech of the gloss
 
           if (lemma && rawGloss) {
             const parts = splitGlossItem(rawGloss);
@@ -751,6 +765,7 @@ export class DictionaryService {
                 src_lang: src_lang.toLowerCase(),
                 lemma,
                 pos,
+                tgt_pos,
                 tgt_lang: tgt_lang.toLowerCase(),
                 gloss: p,
                 notes: 'Imported from spreadsheet'
@@ -858,14 +873,15 @@ export class DictionaryService {
     if (format === 'json') {
       return JSON.stringify(entries, null, 2);
     }
-    const header = ['lemma', 'gloss', 'target_lang', 'pos', 'source_lang', 'notes'].join('\t');
+    const header = ['lemma', 'gloss', 'target_lang', 'pos', 'source_lang', 'notes', 'target_pos'].join('\t');
     const rows = entries.map(e => [
       e.lemma,
       e.gloss,
       e.tgt_lang,
       e.pos || '',
       e.src_lang,
-      e.notes || ''
+      e.notes || '',
+      e.tgt_pos || ''
     ].join('\t'));
     return [header, ...rows].join('\n');
   }

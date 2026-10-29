@@ -38,7 +38,7 @@ The large morphological models are not stored in this repository. On first use L
    - Multi-language gloss pills display which translations are available across different target languages.
    - **Select Gloss or Add Own**:
      - Click candidate gloss chips or select from dropdown.
-     - Add custom gloss with required ISO language code and a required part of speech (N, V, A, Adv, Pron, Po, … the Ve'rdd set; preselected from the reading). A gloss cannot be saved without one.
+     - Add custom gloss with required ISO language code and a required part of speech for both the source word (preselected from the reading) and the target gloss (always chosen by you): N, V, A, Adv, Pron, Po, … the Ve'rdd set. A gloss cannot be saved without both; they may differ.
      - Option to auto-save custom glosses to your persistent custom dictionary.
 
 4. **Multiple Sentence Translations (ISO language tagged)**
@@ -79,7 +79,7 @@ The large morphological models are not stored in this repository. On first use L
 
 7. **Custom Dictionaries & Transducer Management**:
    - **Add Own Dictionaries**:
-     - Interactive entry editor (Lemma, POS, Target Lang ISO, Gloss). The POS is required for new entries; entries without one (for example imported ones) are flagged and a POS can be chosen in the POS column.
+     - Interactive entry editor (Lemma, POS, Target Lang ISO, Gloss). Both parts of speech (source word and target gloss) are required for new entries; entries lacking either (for example imported ones) are flagged and can be completed in the POS and Gloss POS columns. TSV export adds a `target_pos` column (7th), which TSV import reads again (JSON uses `tgt_pos`). In the Ve'rdd Send tab the gloss POS becomes the translation POS.
      - Import custom dictionaries from **TSV**, **CSV**, **JSON**, or **Lexc** (`src_lemma:tgt_gloss #;`).
      - Export custom dictionary as TSV.
    - **Transducer Models**:
