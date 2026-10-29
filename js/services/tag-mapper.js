@@ -289,6 +289,16 @@ export const adpIsCase = (tags) => {
 };
 
 /**
+ * A tag that makes a verb finite: a subject person/number ending (Sg1, Pl3, Du2) or a subject concord (ScSg1, ScPl3M).
+ * Object concord (Oc...) and possessive (Px...) endings do not.
+ */
+export const isFiniteTag = (tag) => /^(Sc)?(Sg|Du|Pl)[123][FM]?$/.test(tag);
+
+/** VerbForm=Fin for a VERB whose tags hold a finite ending, unless the readout already says what VerbForm it is. */
+export const impliesFinite = (upos, tags, feats) =>
+  upos === 'VERB' && !feats.VerbForm && (tags || []).some(isFiniteTag);
+
+/**
  * Strips all occurrences of +Guess, Guess+, «+Guess», «Guess», and adjacent
  * compound/boundary guess markers from an analysis or lemma string, while
  * strictly preserving the English lexical word "guess" (e.g., in guess+V+Inf).
@@ -489,14 +499,19 @@ export class TagMapper {
 
     const cleanRaw = stripGuessTags(rawAnalysis);
 
+    // A compound member with no stem of its own ("+Cmp/SplitL#komissio+N+Pl+Nom", the analysis of "-komissio"):
+    // its first section holds only tags, and the lemma is what follows the boundary.
+    const stemless = cleanRaw.includes('#') && /^\s*\+(?!guess)/i.test(rawAnalysis);
+
     // Extract compound lemma or simple lemma across '#' boundaries
     let lemma = '';
     if (cleanRaw.includes('#')) {
       const sections = cleanRaw.split('#').filter(Boolean);
-      for (const sec of sections) {
+      sections.forEach((sec, sIdx) => {
+        if (stemless && sIdx === 0) return;
         const secParts = sec.split('+').filter(Boolean);
         if (secParts.length > 0) lemma += secParts[0];
-      }
+      });
     } else {
       const parts = cleanRaw.split('+').filter(Boolean);
       lemma = parts[0] || '';
@@ -509,7 +524,9 @@ export class TagMapper {
       const sections = cleanRaw.split('#').filter(Boolean);
       for (let sIdx = 0; sIdx < sections.length; sIdx++) {
         const secParts = sections[sIdx].split('+').filter(Boolean);
-        if (secParts.length > 1) {
+        if (stemless && sIdx === 0) {
+          cleanTags.push(...secParts);
+        } else if (secParts.length > 1) {
           cleanTags.push(...secParts.slice(1));
         }
       }
@@ -559,6 +576,9 @@ export class TagMapper {
         featsMap['Typo'] = 'Yes';
       }
     }
+
+    // a finite verb (UD: VERB with a person/number ending) is VerbForm=Fin
+    if (impliesFinite(upos, cleanTags, featsMap)) featsMap.VerbForm = 'Fin';
 
     // Identify language-specific orthography / keyboard accommodation tags (e.g. Err/Orth-no-pal)
     const orthErrTag = cleanTags.find(t => /^Err\/Orth/i.test(t) || /^Err\//i.test(t) || t === 'Err/Orth');

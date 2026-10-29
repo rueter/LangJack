@@ -55,14 +55,14 @@ assert.strictEqual(feats('x+N+Du+Nom'), 'Case=Nom|Number=Dual');
 assert.strictEqual(feats('x+N+PxDu1'), 'Number[psor]=Dual|Person[psor]=1');
 assert.strictEqual(feats('x+N+Sg+Nom+PxDu2'), 'Case=Nom|Number=Sing|Number[psor]=Dual|Person[psor]=2');
 assert.strictEqual(feats('x+N+Du+Nom+PxDu3'), 'Case=Nom|Number=Dual|Number[psor]=Dual|Person[psor]=3', 'own number and possessor number do not collide');
-assert.strictEqual(feats('x+V+Ind+Prs+Du1'), 'Mood=Ind|Number=Dual|Person=1|Tense=Pres');
+assert.strictEqual(feats('x+V+Ind+Prs+Du1'), 'Mood=Ind|Number=Dual|Person=1|Tense=Pres|VerbForm=Fin');
 assert.strictEqual(feats('x+V+Ind+Prs+ScDu1+OcDu3'),
-  'Mood=Ind|Number[obj]=Dual|Number[subj]=Dual|Person[obj]=3|Person[subj]=1|Tense=Pres');
+  'Mood=Ind|Number[obj]=Dual|Number[subj]=Dual|Person[obj]=3|Person[subj]=1|Tense=Pres|VerbForm=Fin');
 assert.strictEqual(feats('x+V+Ind+Prs+ScSg1+OcDu2'),
-  'Mood=Ind|Number[obj]=Dual|Number[subj]=Sing|Person[obj]=2|Person[subj]=1|Tense=Pres', 'dual object, singular subject');
+  'Mood=Ind|Number[obj]=Dual|Number[subj]=Sing|Person[obj]=2|Person[subj]=1|Tense=Pres|VerbForm=Fin', 'dual object, singular subject');
 // the language argument changes nothing for the dual tags
 for (const lang of ['sms', 'sjd', 'fin', 'myv', 'kpv', null]) {
-  assert.strictEqual(feats('x+V+Ind+Prs+Du2', lang), 'Mood=Ind|Number=Dual|Person=2|Tense=Pres', `Du2 in ${lang}`);
+  assert.strictEqual(feats('x+V+Ind+Prs+Du2', lang), 'Mood=Ind|Number=Dual|Person=2|Tense=Pres|VerbForm=Fin', `Du2 in ${lang}`);
 }
 
 // 4. the inventory knows the value

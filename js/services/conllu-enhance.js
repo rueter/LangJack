@@ -112,6 +112,7 @@ export function featsFromGloss(gloss, upos = '', lang = '') {
   const mapped = [];
   const unmapped = [];
   if (isEmptyCell(gloss)) return { feats, mapped, unmapped };
+  let subjectEnding = false;
   const defaultRole = /^(NOUN|PROPN|ADP|ADJ|NUM)$/.test(upos) ? 'psor' : (/^(VERB|AUX)$/.test(upos) ? 'subj' : '');
 
   for (const morpheme of gloss.split(/[-=]/).filter(Boolean)) {
@@ -143,11 +144,14 @@ export function featsFromGloss(gloss, upos = '', lang = '') {
       }
     }
     const bracket = role || (hasPerson ? defaultRole : '');
+    if (hasPerson && bracket === 'subj') subjectEnding = true;
     for (const [key, value] of bundle) addValue(feats, bracket ? `${key}[${bracket}]` : key, value);
     for (const [key, value] of found) addValue(feats, key, value);
     if (bundle.length || found.length) mapped.push(morpheme);
     if (unknown && !bundle.length && !found.length) unmapped.push(morpheme);
   }
+  // a verb with a subject person/number ending is finite, unless the gloss already gave another VerbForm
+  if (upos === 'VERB' && subjectEnding && !feats.has('VerbForm')) feats.set('VerbForm', 'Fin');
   return { feats, mapped, unmapped };
 }
 

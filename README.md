@@ -82,6 +82,8 @@ The large morphological models are not stored in this repository. On first use L
      - Interactive entry editor (Lemma, POS, Target Lang ISO, Gloss). Both parts of speech (source word and target gloss) are required for new entries; entries lacking either (for example imported ones) are flagged and can be completed in the POS and Gloss POS columns. TSV export adds a `target_pos` column (7th), which TSV import reads again (JSON uses `tgt_pos`). In the Ve'rdd Send tab the gloss POS becomes the translation POS.
      - Import custom dictionaries from **TSV**, **CSV**, **JSON**, or **Lexc** (`src_lemma:tgt_gloss #;`).
      - Export custom dictionary as TSV.
+   - **Hyphens touching a word**: in the Input Text a hyphen touching the end or the start of a word (`tuõttvuõtt- da -komissio`, `Maa- ja metsätalous`) stays part of that wordform, in the tokens and so in the CoNLL-U FORM column. A spaced hyphen, a dash or a minus before digits is still punctuation. An analysis whose first compound member has no stem (`+Cmp/SplitL#komissio+N+Pl+Nom`) gives the lemma `komissio` and keeps `Cmp/SplitL` among the tags.
+   - **Finite verbs**: a token with UPOS `VERB` and a subject person/number ending in its tags (`Sg1`, `Pl3`, `Du2`, `ScSg1` ...) gets `VerbForm=Fin`, in the CoNLL-U export and in import/enhance (also from a gloss such as `ver-1SG`). Object (`Oc…`) and possessive (`Px…`) endings do not count, and a VerbForm the analysis already gives (e.g. `Vnoun`) is kept.
    - **Blanks inside a multiword gloss** are kept as plain spaces and written per target: a space for Ve'rdd, a hyphen for CoNLL-U (`Gloss[en]=old-woman`; an imported file that uses dots keeps its dots), and `<b/>` for Apertium (*📤 Export Apertium .dix* exports the custom lexicon as a bilingual dictionary). See `js/services/gloss-format.js`.
    - **Your own private dictionaries**: under **Models & Dictionaries**, *2. Dictionary Transducer* has **📁 Upload .hfstol Dictionary** for a UralicNLP-style dictionary FST (the format of `uralicnlpmodels/nightly`), and *3. Custom User Lexicon* has **📥 Import TSV / CSV / JSON / Lexc** for the TSV format described below. Both stay only in your browser (IndexedDB), are never sent anywhere and are not part of the repository. An uploaded FST is used first in lookups, is loaded again in every later session, is listed under the upload button (uploading the same file name replaces it) and can be removed there; TSV entries appear in the lexicon table, where they can be edited and deleted.
    - **Transducer Models**:
@@ -205,6 +207,8 @@ node test/test_reading_order.js
 node test/test_custom_gloss_pos.js
 node test/test_private_dictionaries.js
 node test/test_gloss_hyphens.js
+node test/test_verbform_fin.js
+node test/test_hyphen_wordform.js
 ```
 
 Some suites load analyzers from `models/`. Those files are not in the repository (see *Try it online*): download them first through the app, or copy them into `models/`.

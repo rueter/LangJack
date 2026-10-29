@@ -19,7 +19,7 @@ const isPunctForm = (form) => /^[\p{P}\p{S}]+$/u.test(form || '');
  * @returns {string} tags joined by "+", or "" when there is none
  */
 export function xposFromAnalysis(raw) {
-  const tags = TagMapper.parse(stripGuessTags(raw || '')).cleanTags || [];
+  const tags = TagMapper.parse(raw || '').cleanTags || [];
   return tags.join('+');
 }
 

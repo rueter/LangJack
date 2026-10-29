@@ -16,7 +16,7 @@ console.log('✓ TagMapper noun parsing passed:', parsedNoun.feats);
 const parsedVerb = TagMapper.parse('ульнемс+V+IV+Ind+Prt1+ScSg3');
 assert.strictEqual(parsedVerb.lemma, 'ульнемс');
 assert.strictEqual(parsedVerb.upos, 'VERB');
-assert.strictEqual(parsedVerb.feats, 'Mood=Ind|Number[subj]=Sing|Person[subj]=3|Tense=Past', 'IV is not mapped to Subcat=Intr');
+assert.strictEqual(parsedVerb.feats, 'Mood=Ind|Number[subj]=Sing|Person[subj]=3|Tense=Past|VerbForm=Fin', 'IV is not mapped to Subcat=Intr');
 assert.strictEqual(TagMapper.parse('x+V+TV+Ind').feats, 'Mood=Ind', 'TV is not mapped to Subcat=Tran');
 console.log('✓ TagMapper verb parsing passed:', parsedVerb.feats);
 

@@ -513,7 +513,8 @@ export class AnalyzerService {
     const sentences = [];
 
     rawSentences.forEach((sentStr, sentIdx) => {
-      const tokenRegex = /[\p{L}\p{M}\d]+(?:['’ʼ´`\-][\p{L}\p{M}\d]+)*['’ʼ´`]?|[.,!?;:\-–—«»"()\[\]{}]|[^\s\p{L}\p{M}\d]/gu;
+      // a hyphen touching the end or the start of a word ("tuõttvuõtt- da suåvâdvuõttkomissio", "-komissio") stays part of the wordform
+      const tokenRegex = /(?:(?<![\p{L}\p{M}\d])[\-‐](?=[\p{L}\p{M}]))?[\p{L}\p{M}\d]+(?:['’ʼ´`\-][\p{L}\p{M}\d]+)*(?:['’ʼ´`]|[\-‐](?![\p{L}\p{M}\d]))?|[.,!?;:\-–—«»"()\[\]{}]|[^\s\p{L}\p{M}\d]/gu;
       const rawTokens = sentStr.match(tokenRegex) || [];
 
       const tokens = rawTokens.map((tok, tokIdx) => {

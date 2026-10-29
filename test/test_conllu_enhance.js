@@ -29,7 +29,7 @@ let g = featsFromGloss('ver-VBLZ-3SG.M.O', 'VERB');
 assert.strictEqual(asString(g.feats), 'Gender[obj]=Masc|Number[obj]=Sing|Person[obj]=3');
 assert.deepStrictEqual(g.unmapped, ['VBLZ'], 'Unknown grammatical morphemes are listed, not guessed');
 assert.strictEqual(asString(featsFromGloss('3SG.M-osso', 'NOUN').feats), 'Gender[psor]=Masc|Number[psor]=Sing|Person[psor]=3', 'Role-less bundle on a noun is the possessor');
-assert.strictEqual(asString(featsFromGloss('3SG.M-ir', 'VERB').feats), 'Gender[subj]=Masc|Number[subj]=Sing|Person[subj]=3', 'Role-less bundle on a verb is the subject');
+assert.strictEqual(asString(featsFromGloss('3SG.M-ir', 'VERB').feats), 'Gender[subj]=Masc|Number[subj]=Sing|Person[subj]=3|VerbForm=Fin', 'Role-less bundle on a verb is the subject (and the verb is finite)');
 assert.strictEqual(asString(featsFromGloss('dar-TEMP', 'VERB').feats), 'Case=Tem');
 assert.strictEqual(asString(featsFromGloss('casa-ACC.PL', 'NOUN').feats), 'Case=Acc|Number=Plur');
 assert.strictEqual(featsFromGloss('sangue.de-casa', 'NOUN').feats.size, 0, 'Lexical morphemes (lowercase) give no features');
