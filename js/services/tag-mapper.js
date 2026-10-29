@@ -96,6 +96,7 @@ export const TAG_TO_FEATS = {
   'AprTra': { feature: 'Case', value: 'AprTra' },
   'Car': { feature: 'Case', value: 'Car' },
   'Cmp': { feature: 'Case', value: 'Cmp' },
+  'Ord': { feature: 'NumType', value: 'Ord' },
   'Com': { feature: 'Case', value: 'Com' },
   'Dat': { feature: 'Case', value: 'Dat' },
   'Egr': { feature: 'Case', value: 'Egr' },

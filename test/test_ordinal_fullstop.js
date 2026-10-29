@@ -44,4 +44,5 @@ assert.strictEqual(ord.lemma, '23');
 assert.strictEqual(ord.upos, 'ADJ');
 assert.strictEqual(ord.selectedReading.raw, '23+A+Arab+Ord+Attr');
 assert.strictEqual(ord.isPunct, false);
+assert.strictEqual(ord.selectedReading.feats, 'NumType=Ord');
 console.log('✓ ordinal numerals keep their full stop');
