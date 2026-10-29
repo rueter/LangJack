@@ -4,7 +4,7 @@
  */
 
 import { HfstInputStream } from '../lib/hfst/core.js';
-import { TagMapper } from './tag-mapper.js';
+import { TagMapper, stripGuessTags } from './tag-mapper.js';
 import { storageService } from './storage-service.js';
 import { SpellRelaxService } from './spell-relax-service.js';
 
@@ -500,22 +500,74 @@ export class AnalyzerService {
   }
 
   /**
-   * Splits input text into sentences and tokens.
+   * True when the language's analyzer reads `word` (digits and a full stop, "23.") as an ordinal numeral (+Ord),
+   * as the Nordic transducers do. False without a loaded transducer or without such a reading.
    */
-  tokenize(text) {
+  isOrdinalNumeral(word, language = null) {
+    if (!/^\d+\.$/.test(word || '')) return false;
+    const lang = normalizeLangCode(language || this.activeLang || '');
+    const hfst = this.models.get(lang);
+    if (!hfst) return false;
+    this._ordinalCache = this._ordinalCache || new Map();
+    const key = `${lang}\u0000${word}`;
+    if (!this._ordinalCache.has(key)) {
+      let found = false;
+      try {
+        for (const [analysis] of hfst.lookup(word) || []) {
+          const tags = stripGuessTags(String(analysis).replace(/@[^@]*@/g, '')).split('+').slice(1);
+          if (tags.includes('Ord') && !tags.includes('Guess')) { found = true; break; }
+        }
+      } catch (err) {
+        found = false;
+      }
+      this._ordinalCache.set(key, found);
+    }
+    return this._ordinalCache.get(key);
+  }
+
+  /**
+   * Splits input text into sentences and tokens.
+   * With `language`, a numeral the transducer reads as an ordinal ("23.", Nordic style) keeps its full stop
+   * inside a sentence: neither the token nor the sentence is cut there. A full stop that ends the sentence stays punctuation.
+   */
+  tokenize(text, language = null) {
     if (!text || typeof text !== 'string') return [];
 
-    const rawSentences = text
-      .split(/(?<=[.!?])\s+(?=[A-ZА-ЯЁÄÖÜŠŽ\d«"'])|\n+/)
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
+    const rawSentences = [];
+    for (const line of text.split(/\n+/)) {
+      const pieces = line.split(/(?<=[.!?])\s+(?=[A-ZА-ЯЁÄÖÜŠŽ\d«"'])/);
+      const merged = [];
+      for (const piece of pieces) {
+        const prev = merged[merged.length - 1];
+        const ordinal = prev && /^[\d]/.test(piece) && prev.match(/(?:^|\s)(\d+\.)$/);
+        // "23. 5. 2020": a date, not two sentences
+        if (ordinal && this.isOrdinalNumeral(ordinal[1], language)) merged[merged.length - 1] = `${prev} ${piece}`;
+        else merged.push(piece);
+      }
+      rawSentences.push(...merged);
+    }
+    const sentenceStrings = rawSentences.map(s => s.trim()).filter(s => s.length > 0);
 
     const sentences = [];
 
-    rawSentences.forEach((sentStr, sentIdx) => {
+    sentenceStrings.forEach((sentStr, sentIdx) => {
       // a hyphen touching the end or the start of a word ("tuõttvuõtt- da suåvâdvuõttkomissio", "-komissio") stays part of the wordform
       const tokenRegex = /(?:(?<![\p{L}\p{M}\d])[\-‐](?=[\p{L}\p{M}]))?[\p{L}\p{M}\d]+(?:['’ʼ´`\-][\p{L}\p{M}\d]+)*(?:['’ʼ´`]|[\-‐](?![\p{L}\p{M}\d]))?|[.,!?;:\-–—«»"()\[\]{}]|[^\s\p{L}\p{M}\d]/gu;
-      const rawTokens = sentStr.match(tokenRegex) || [];
+      const rawTokens = [];
+      const found = [...sentStr.matchAll(tokenRegex)];
+      for (let i = 0; i < found.length; i++) {
+        const m = found[i];
+        const next = found[i + 1];
+        // "23." as one token when the transducer has the ordinal reading, and more text follows in the sentence
+        if (/^\d+$/.test(m[0]) && next && next[0] === '.' && next.index === m.index + m[0].length
+            && /\s/.test(sentStr[next.index + 1] || '') && found[i + 2]
+            && this.isOrdinalNumeral(`${m[0]}.`, language)) {
+          rawTokens.push(`${m[0]}.`);
+          i++;
+        } else {
+          rawTokens.push(m[0]);
+        }
+      }
 
       const tokens = rawTokens.map((tok, tokIdx) => {
         const isPunct = /^[.,!?;:\-–—«»"()\[\]{}]+$/.test(tok);
@@ -853,7 +905,7 @@ export class AnalyzerService {
     const lang = (language || this.activeLang || 'myv').toLowerCase();
     await this.ensureModelForLanguage(lang);
 
-    const sentences = this.tokenize(text);
+    const sentences = this.tokenize(text, lang);
 
     for (const sent of sentences) {
       for (const tok of sent.tokens) {
