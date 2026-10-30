@@ -114,7 +114,7 @@ LangJack is built from a single unified codebase supporting three distribution t
    - **Touch & Mobile Optimized**: Responsive mobile layouts, swipeable token cards, touch-friendly tap targets, and touch selection handling.
 
 4. **Chromium on Android (Kiwi Browser, Lemur Browser, Yandex Browser)**
-   - Android Chromium browsers that support extensions can install `dist/langjack-v1.0.0-chrome.zip` directly to enable in-page touch text selection and dictionary lookup across all web pages.
+   - Android Chromium browsers that support extensions can install `dist/langjack-v1.0.1-chrome.zip` directly to enable in-page touch text selection and dictionary lookup across all web pages.
 
 ---
 
@@ -133,9 +133,9 @@ To build production-ready packages for all targets from the unified codebase:
 ```
 
 Generated packages will be in the `dist/` directory:
-- `dist/langjack-v1.0.0-chrome.zip` (Chrome Desktop & Chromium Android)
-- `dist/langjack-v1.0.0-firefox.xpi` (Firefox Desktop & Firefox for Android)
-- `dist/langjack-v1.0.0-android-pwa.zip` (Chrome on Android PWA)
+- `dist/langjack-v1.0.1-chrome.zip` (Chrome Desktop & Chromium Android)
+- `dist/langjack-v1.0.1-firefox.xpi` (Firefox Desktop & Firefox for Android)
+- `dist/langjack-v1.0.1-android-pwa.zip` (Chrome on Android PWA)
 
 ---
 
@@ -160,12 +160,12 @@ Generated packages will be in the `dist/` directory:
 
 ## Dictionaries in TSV format
 
-Besides the UralicNLP dictionary transducers, LangJack reads plain tab-separated dictionaries. `models/dict-apu-por.tsv` is a **small sample** (Apurinã with Portuguese and English glosses) that shows the format; it is not a full lexicon. `models/dict-koi.tsv` is derived from UralicNLP / Giellatekno data.
+Besides the UralicNLP dictionary transducers, LangJack reads plain tab-separated dictionaries. `models/dict-apu-por.tsv` is a **small sample** (Apurinã with Portuguese and English glosses) that shows the format; it is not a full lexicon. `models/dict-koi.tsv` is derived from UralicNLP / Giellatekno / Developer's own data.
 
 ```
-lemma	gloss	target_lang	pos	source_lang	notes
-aiku	casa	por	N	apu	Apurinã noun
-aiku	house	eng	N	apu	Apurinã noun
+lemma	gloss	target_lang	pos	source_lang	notes	target_pos
+aiku	casa	por	N	apu	Apurinã noun	N
+aiku	house	eng	N	apu	Apurinã noun	N
 ```
 
 Lines starting with `#` are comments. Your own TSV, CSV, JSON or Lexc dictionaries can be imported under **Models & Dictionaries**, and are kept in your browser.
@@ -225,6 +225,17 @@ Verifies:
 - Language configuration: exclusion of `chm`, inclusion of Komi-Permyak (`koi`), Meadow Mari (`mhr`), and Hill Mari (`mrj`).
 - Multi-language dictionary glossing and ISO language code filtering.
 - CoNLL-U, 5-line Linguistic Leipzig, and Ve'rdd multi-format exports.
+
+---
+## Release notes
+
+This release 2026-10-30 changed:
+     * Android use optimization -- the floating bubble (below the selection, with a spinner),
+     * CoNLL-U import and enhancement,
+     * UD Feature=Value pairs, such as VerbForm=Fin,
+     * UD Tokenization for hyphen and ordinal full-stop,
+     * gloss POS and private dictionaries.
+
 
 ---
 
