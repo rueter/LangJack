@@ -33,6 +33,8 @@ export const KNOWN_LANGUAGES = {
   vot: 'Votic',
   izt: 'Ingrian',
   apu: 'Apurinã',
+  lut: 'Lushootseed',
+  slh: 'Southern Lushootseed',
   bxr: 'Buryat',
   chp: 'Chipewyan',
   crk: 'Plains Cree',

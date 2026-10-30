@@ -483,6 +483,29 @@ assert.strictEqual(detectLanguageForWord('päärnaž'), 'sms', 'Sámi consonant 
 assert.strictEqual(detectLanguageForWord('sääʹm'), 'sms', 'Root «ää» with palatalization mark resolves to Skolt Sámi');
 console.log('✓ General Sámi consonants + root «ä» correctly eliminates North Sámi and resolves to Skolt Sámi');
 
+// 10d-2. Lushootseed (lut) and Southern Lushootseed (slh): «ə ʷ ʔ ƛ ɬ ᶻ x̌» and the combining comma (U+0313/U+0315)
+console.log('\n--- 10d-2. Testing Lushootseed (lut) and Southern Lushootseed (slh) letters ---');
+for (const w of ['dxʷləšucid', 'bədaʔ', 'x̌aʔx̌aʔ', 'q̓ʷəlil', 'sq̓aƛ̕', 'ɬalil', 'dᶻəqil', 'č̓itil', 'k̓ʷat̕ad', 'gʷədil']) {
+  assert.strictEqual(detectLanguageForWord(w), 'lut', `«${w}» must be recognized as Lushootseed (lut)`);
+}
+// «č, š, ǰ» must not route Lushootseed to Sámi, nor «ts» to Apurinã
+assert.strictEqual(detectLanguageForWord('č̓ač̓as'), 'lut', '«č̓» with comma above must be Lushootseed, not Sámi');
+assert.strictEqual(detectLanguageForWord('huyutsut', 'lut'), 'slh', 'Reflexive «-tsut» must be Southern Lushootseed, not Apurinã');
+// Dialect forms: lut «-yid» vs slh «-šid», lut «-il» vs slh «-i»
+assert.strictEqual(detectLanguageForWord('lək̓ʷyid'), 'lut', 'Applicative «-yid» indicates Lushootseed (lut)');
+assert.strictEqual(detectLanguageForWord('lək̓ʷšid', 'lut'), 'slh', 'Applicative «-šid» indicates Southern Lushootseed (slh)');
+assert.strictEqual(detectLanguageForWord('t̓iq̓ʷil', 'slh'), 'lut', '«t̓» with U+0313 is a Lushootseed (lut) spelling');
+assert.strictEqual(detectLanguageForWord('cəlaci'), 'slh', 'Inchoative «-i» (cəlacil) indicates Southern Lushootseed (slh)');
+assert.strictEqual(detectLanguageForWord('cəlacil'), 'lut', 'Inchoative «-il» indicates Lushootseed (lut)');
+// Shared forms keep a lut/slh default, also when the word has no Lushootseed-only letter
+assert.strictEqual(detectLanguageForWord('sɬali', 'lut'), 'lut', 'Shared form keeps default lut');
+assert.strictEqual(detectLanguageForWord('q̓ʷəlil', 'slh'), 'slh', 'Shared form keeps default slh');
+assert.strictEqual(detectLanguageForWord('kawič', 'slh'), 'slh', 'Unmarked «kawič» keeps default slh instead of Sámi');
+// Precomposed «š» (U+0161) and «ǰ» (U+01F0) work like their decomposed forms
+assert.strictEqual(detectLanguageForWord('lək̓ʷšid', 'lut'), 'slh', 'Precomposed «š» in «-šid» indicates slh');
+assert.strictEqual(detectLanguageForWord('ǰəsəd'), 'lut', 'Precomposed «ǰ» word is Lushootseed');
+console.log('✓ Lushootseed (lut) and Southern Lushootseed (slh) correctly recognized and separated');
+
 // 10e. Testing Komi-Permyak (koi) In-Page Dictionary Resolution («мунісӧ»)
 console.log('\n--- 10e. Testing Komi-Permyak (koi) In-Page Dictionary Card Resolution («мунісӧ») ---');
 assert.strictEqual(detectLanguageForWord('мунісӧ', 'koi'), 'koi', 'Detecting language for "мунісӧ" with default "koi" must return "koi"');

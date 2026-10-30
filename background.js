@@ -46,6 +46,16 @@ export function detectLanguageForWord(word, defaultLang = 'myv') {
   if (!word || typeof word !== 'string') return defaultLang;
   const clean = word.trim();
 
+  // 0. Lushootseed (lut) and Southern Lushootseed (slh) – checked first, since their «č, š, ǰ»
+  //    would otherwise route to Sámi and «ts» (tsi, huyutsut) to Apurinã
+  if (isLushootseedWord(clean)) {
+    return detectLushootseedVariety(clean, defaultLang);
+  }
+  // Unmarked words (kawič, stubš, huyutsut) stay with a lut/slh default if spelled in its alphabet
+  if ((defaultLang === 'lut' || defaultLang === 'slh') && /^[abcdghijklmnpqstuwxy̌]+$/i.test(clean.normalize('NFD'))) {
+    return detectLushootseedVariety(clean, defaultLang);
+  }
+
   // 1. Skolt Sámi specific characters (ǥ, ǧ, ǩ, õ, ǯ, ʒ, å, ʹ, ˈ, ẹ)
   if (/[ǩõǧǯʒʼåʹǥˈẹ]/i.test(clean) || /^[kK]åʹll/i.test(clean)) {
     return 'sms';
@@ -97,6 +107,38 @@ export function detectLanguageForWord(word, defaultLang = 'myv') {
 }
 
 /**
+ * Lushootseed letters not used by the other supported languages (inventory of the lang-lut and
+ * lang-slh stems and keyboard-lut): ə ǝ ʷ ʔ ƛ ɬ ᶻ, x̌ (x + U+030C caron) and glottalization written
+ * with U+0313 COMBINING COMMA ABOVE or U+0315 COMBINING COMMA ABOVE RIGHT (c̓ k̓ q̓ ƛ̕ l̕ t̕ w̓ y̓ ...).
+ * «q, č, š, ǰ» are Lushootseed too but also occur in Sámi and Finnish loanwords, so they do not count alone.
+ */
+export function isLushootseedWord(word) {
+  if (!word || typeof word !== 'string') return false;
+  return /[əǝʷʔƛɬᶻ̓̕]|x̌/i.test(word.normalize('NFD'));
+}
+
+/**
+ * Separates Lushootseed (lut) from Southern Lushootseed (slh). Both share one alphabet, so this
+ * relies on dialect forms in the lexicons and on the spellrelax options of each description:
+ * - lut: applicative «-yid» (kʷədyid, lək̓ʷyid); «t̓» with U+0313; glottalization with «’» (U+2019);
+ *        «ł» (U+0142) or «ǝ» (U+01DD) for ɬ and ə
+ * - slh: «-šid» after a non-l (kʷədšid, lək̓ʷšid); reflexive «-tsut» (huyutsut); «e» written for ə
+ * - weak cue, only when no lut/slh default is set: lut inchoative «-il» (cəlacil) vs slh «-i» (cəlaci)
+ */
+export function detectLushootseedVariety(word, defaultLang = 'lut') {
+  const w = word.normalize('NFD').toLowerCase();
+
+  if (/yid|t̓|[łǝ]|\S’/.test(w)) return 'lut';
+  if (/[^l\s]šid|tsut|e/.test(w)) return 'slh';
+
+  if (defaultLang === 'lut' || defaultLang === 'slh') return defaultLang;
+
+  if (/il$/.test(w)) return 'lut';
+  if (w.length >= 5 && /[^aiuəʔ]i$/.test(w) && !/ali$/.test(w)) return 'slh'; // -ali (locative) is shared
+  return 'lut';
+}
+
+/**
  * Ensures the appropriate language analyzer model is loaded and analyzes the word.
  * Priority #1: Immediately checks the manually set / preferred language first for maximum speed.
  * Priority #2: Only if preferred language yields 0 valid readings does language recognition
@@ -137,7 +179,8 @@ export async function analyzeWordWithLanguageAssurance(word, preferredLang = 'my
   }
 
   // 3. Priority #3 (Fallback Candidate Search): Test other supported languages
-  const candidateLangs = ['sms', 'myv', 'fin', 'kpv', 'koi', 'apu', 'sme', 'smn', 'mdf', 'udm', 'olo']
+  // Lushootseed models are only tried for words carrying Lushootseed letters
+  const candidateLangs = (isLushootseedWord(cleanWord) ? ['lut', 'slh'] : ['sms', 'myv', 'fin', 'kpv', 'koi', 'apu', 'sme', 'smn', 'mdf', 'udm', 'olo'])
     .filter(l => l !== primaryLang && l !== detectedLang);
 
   const isCyr = /[\u0400-\u04FF]/.test(cleanWord);
