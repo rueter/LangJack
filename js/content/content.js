@@ -20,6 +20,8 @@
   let currentCard = null;
   let currentTriggerHost = null;
   let triggerBubbleEl = null;
+  let triggerLoading = false; // the bubble was pressed and the card is being prepared (models can take several seconds)
+  let triggerLoadingTimer = null;
   let lastSelectionRect = null;
   let lastClickedWord = '';
   let selectionDebounceTimer = null;
@@ -160,6 +162,7 @@
    * Displays the floating trigger bubble near user selection.
    */
   function showTriggerBubble(rect, text) {
+    if (triggerLoading) return; // the pressed bubble is still waiting for its card
     hideTriggerBubble();
     if (!rect || (rect.width === 0 && rect.height === 0)) return;
 
@@ -205,6 +208,25 @@
         font-size: 13px;
         line-height: 1;
       }
+      .hfst-bubble.is-loading {
+        cursor: progress;
+        background: #0369a1;
+        transform: none;
+      }
+      .hfst-bubble.is-loading .hfst-bubble-icon {
+        display: inline-block;
+        animation: hfst-spin 0.9s linear infinite;
+      }
+      .hfst-bubble.is-failed { background: #b45309; }
+      @keyframes hfst-spin {
+        to { transform: rotate(360deg); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .hfst-bubble.is-loading .hfst-bubble-icon { animation: hfst-pulse 1.2s ease-in-out infinite; }
+      }
+      @keyframes hfst-pulse {
+        50% { opacity: 0.35; }
+      }
       @keyframes hfst-pop {
         from { opacity: 0; transform: scale(0.85); }
         to { opacity: 1; transform: scale(1); }
@@ -228,9 +250,16 @@
 
     const scrollX = window.scrollX || window.pageXOffset || 0;
     const scrollY = window.scrollY || window.pageYOffset || 0;
-    let top = rect.top + scrollY - 36;
-    if (top < scrollY + 10) {
-      top = rect.bottom + scrollY + 6;
+    // Below the selection: on Android the browser's own bar (Google Translate and the like) and its
+    // copy/search menu sit above it and cover anything placed there. The selection handles hang a
+    // little under the text, so a touch screen gets a bigger gap. Above is only the fallback, for a
+    // selection at the very bottom of the screen.
+    const touchScreen = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    const gap = touchScreen ? 34 : 8;
+    const bubbleHeight = 30;
+    let top = rect.bottom + scrollY + gap;
+    if (rect.bottom + gap + bubbleHeight > window.innerHeight && rect.top - 36 >= 10) {
+      top = rect.top + scrollY - 36;
     }
     let left = rect.left + scrollX + (rect.width / 2) - 45;
     const maxLeft = (window.innerWidth + scrollX) - 105;
@@ -242,14 +271,41 @@
     const handleTrigger = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      hideTriggerBubble();
+      if (triggerLoading) return; // click and touchend both arrive; a second press must not start a second lookup
+      // Stay on screen and show that something is going on: the first lookup can load a model, which takes seconds.
+      triggerLoading = true;
+      triggerBubbleEl.classList.remove('is-failed');
+      triggerBubbleEl.classList.add('is-loading');
+      triggerBubbleEl.setAttribute('aria-busy', 'true');
+      labelSpan.textContent = 'Looking up…';
+      clearTimeout(triggerLoadingTimer);
+      triggerLoadingTimer = setTimeout(() => hideTriggerBubble(true), 60000);
+      const bubble = triggerBubbleEl;
+      const failed = () => {
+        if (triggerBubbleEl !== bubble) return; // already replaced by the card
+        triggerLoading = false;
+        clearTimeout(triggerLoadingTimer);
+        bubble.classList.remove('is-loading');
+        bubble.classList.add('is-failed');
+        bubble.removeAttribute('aria-busy');
+        labelSpan.textContent = 'Try again';
+      };
       try {
-        chrome.runtime?.sendMessage?.({
+        const sent = chrome.runtime?.sendMessage?.({
           action: 'request_dict_card',
           text: text,
           srcLang: pageRetainedSrcLang
+        }, (response) => {
+          void chrome.runtime?.lastError;
+          if (triggerBubbleEl !== bubble) return;
+          // the card is shown before the answer arrives, so a bubble still here means it did not come
+          if (!response || response.error) failed();
+          else hideTriggerBubble(true);
         });
-      } catch (_) {}
+        if (sent && typeof sent.catch === 'function') sent.catch(() => {});
+      } catch (_) {
+        failed();
+      }
     };
 
     triggerBubbleEl.addEventListener('click', handleTrigger);
@@ -259,7 +315,10 @@
     document.body.appendChild(currentTriggerHost);
   }
 
-  function hideTriggerBubble() {
+  function hideTriggerBubble(force = false) {
+    if (triggerLoading && !force) return; // a lookup is under way: only its result or failure takes the bubble away
+    triggerLoading = false;
+    clearTimeout(triggerLoadingTimer);
     if (currentTriggerHost && currentTriggerHost.parentNode) {
       currentTriggerHost.parentNode.removeChild(currentTriggerHost);
     }
@@ -274,7 +333,7 @@
     if (!data) return;
 
     // Dismiss any trigger bubble
-    hideTriggerBubble();
+    hideTriggerBubble(true);
 
     // Retain language after first use on webpage
     if (data.srcLang) {
@@ -1041,7 +1100,7 @@
   }
 
   function closeDictionaryCard() {
-    hideTriggerBubble();
+    hideTriggerBubble(true);
     document.removeEventListener('keydown', handleGlobalKeydown);
     document.removeEventListener('mousedown', handleOutsideClick);
     document.removeEventListener('touchstart', handleOutsideClick);
