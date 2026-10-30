@@ -107,29 +107,30 @@ export function detectLanguageForWord(word, defaultLang = 'myv') {
 }
 
 /**
- * Lushootseed letters not used by the other supported languages (inventory of the lang-lut and
- * lang-slh stems and keyboard-lut): ə ǝ ʷ ʔ ƛ ɬ ᶻ, x̌ (x + U+030C caron) and glottalization written
- * with U+0313 COMBINING COMMA ABOVE or U+0315 COMBINING COMMA ABOVE RIGHT (c̓ k̓ q̓ ƛ̕ l̕ t̕ w̓ y̓ ...).
+ * Lushootseed letters not used by the other supported languages. lut and slh share one alphabet
+ * (Alphabet section of phonology.twolc in lang-lut and lang-slh, also keyboard-lut): ə ʷ ʔ ƛ ɬ ᶻ,
+ * x̌ (x + U+030C caron) and glottalization written with U+0313 COMBINING COMMA ABOVE or
+ * U+0315 COMBINING COMMA ABOVE RIGHT (c̓ k̓ q̓ ƛ̕ l̕ t̕ w̓ y̓ ...). Community variants are accepted too:
+ * «ǝ» for «ə», and «ɫ» (spellrelax) or «ƚ» (used in slh communities) for «ɬ».
  * «q, č, š, ǰ» are Lushootseed too but also occur in Sámi and Finnish loanwords, so they do not count alone.
  */
 export function isLushootseedWord(word) {
   if (!word || typeof word !== 'string') return false;
-  return /[əǝʷʔƛɬᶻ̓̕]|x̌/i.test(word.normalize('NFD'));
+  return /[əǝʷʔƛɬɫƚᶻ̓̕]|x̌/i.test(word.normalize('NFD'));
 }
 
 /**
- * Separates Lushootseed (lut) from Southern Lushootseed (slh). Both share one alphabet, so this
- * relies on dialect forms in the lexicons and on the spellrelax options of each description:
- * - lut: applicative «-yid» (kʷədyid, lək̓ʷyid); «t̓» with U+0313; glottalization with «’» (U+2019);
- *        «ł» (U+0142) or «ǝ» (U+01DD) for ɬ and ə
- * - slh: «-šid» after a non-l (kʷədšid, lək̓ʷšid); reflexive «-tsut» (huyutsut); «e» written for ə
+ * Separates Lushootseed (lut) from Southern Lushootseed (slh). Both share one alphabet, so letters
+ * never decide between them; only dialect word-forms in the lexicons do:
+ * - lut: applicative «-yid» (kʷədyid, lək̓ʷyid)
+ * - slh: «-šid» after a non-l (kʷədšid, lək̓ʷšid); reflexive «-tsut» (huyutsut)
  * - weak cue, only when no lut/slh default is set: lut inchoative «-il» (cəlacil) vs slh «-i» (cəlaci)
  */
 export function detectLushootseedVariety(word, defaultLang = 'lut') {
   const w = word.normalize('NFD').toLowerCase();
 
-  if (/yid|t̓|[łǝ]|\S’/.test(w)) return 'lut';
-  if (/[^l\s]šid|tsut|e/.test(w)) return 'slh';
+  if (/yid/.test(w)) return 'lut';
+  if (/[^l\s]šid|tsut/.test(w)) return 'slh';
 
   if (defaultLang === 'lut' || defaultLang === 'slh') return defaultLang;
 

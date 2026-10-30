@@ -494,13 +494,20 @@ assert.strictEqual(detectLanguageForWord('huyutsut', 'lut'), 'slh', 'Reflexive �
 // Dialect forms: lut «-yid» vs slh «-šid», lut «-il» vs slh «-i»
 assert.strictEqual(detectLanguageForWord('lək̓ʷyid'), 'lut', 'Applicative «-yid» indicates Lushootseed (lut)');
 assert.strictEqual(detectLanguageForWord('lək̓ʷšid', 'lut'), 'slh', 'Applicative «-šid» indicates Southern Lushootseed (slh)');
-assert.strictEqual(detectLanguageForWord('t̓iq̓ʷil', 'slh'), 'lut', '«t̓» with U+0313 is a Lushootseed (lut) spelling');
+// lut and slh share one alphabet: letters alone never switch between them
+assert.strictEqual(detectLanguageForWord('t̓iq̓ʷil', 'slh'), 'slh', '«t̓» (U+0313) does not switch slh to lut');
+assert.strictEqual(detectLanguageForWord('t̕iq̓ʷi', 'lut'), 'lut', '«t̕» (U+0315) does not switch lut to slh');
 assert.strictEqual(detectLanguageForWord('cəlaci'), 'slh', 'Inchoative «-i» (cəlacil) indicates Southern Lushootseed (slh)');
 assert.strictEqual(detectLanguageForWord('cəlacil'), 'lut', 'Inchoative «-il» indicates Lushootseed (lut)');
 // Shared forms keep a lut/slh default, also when the word has no Lushootseed-only letter
 assert.strictEqual(detectLanguageForWord('sɬali', 'lut'), 'lut', 'Shared form keeps default lut');
 assert.strictEqual(detectLanguageForWord('q̓ʷəlil', 'slh'), 'slh', 'Shared form keeps default slh');
 assert.strictEqual(detectLanguageForWord('kawič', 'slh'), 'slh', 'Unmarked «kawič» keeps default slh instead of Sámi');
+// Community spellings of «ɬ»: «ƚ» (U+019A) and «ɫ» (U+026B) mark the Lushootseed group, not one variety
+assert.strictEqual(detectLanguageForWord('ƚalil'), 'lut', '«ƚ» for «ɬ» is recognized as Lushootseed');
+assert.strictEqual(detectLanguageForWord('sƚali', 'slh'), 'slh', '«ƚ» keeps default slh');
+assert.strictEqual(detectLanguageForWord('sƚali', 'lut'), 'lut', '«ƚ» does not switch lut to slh');
+assert.strictEqual(detectLanguageForWord('ɫalil'), 'lut', '«ɫ» for «ɬ» is recognized as Lushootseed');
 // Precomposed «š» (U+0161) and «ǰ» (U+01F0) work like their decomposed forms
 assert.strictEqual(detectLanguageForWord('lək̓ʷšid', 'lut'), 'slh', 'Precomposed «š» in «-šid» indicates slh');
 assert.strictEqual(detectLanguageForWord('ǰəsəd'), 'lut', 'Precomposed «ǰ» word is Lushootseed');
