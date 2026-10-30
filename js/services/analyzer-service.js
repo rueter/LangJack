@@ -4,7 +4,7 @@
  */
 
 import { HfstInputStream } from '../lib/hfst/core.js';
-import { TagMapper, stripGuessTags } from './tag-mapper.js';
+import { TagMapper, stripGuessTags, readingComplexity } from './tag-mapper.js';
 import { storageService } from './storage-service.js';
 import { SpellRelaxService } from './spell-relax-service.js';
 
@@ -686,14 +686,12 @@ export class AnalyzerService {
           // Genuine lexical or compound (+Cmp by itself) readings exist.
           // Filter out the entire morphological analysis dependent on +Guess.
           lexicalReadings.sort((a, b) => {
+            // Simplest readings first: plain, then derived (+Der/...), then compounds (+Cmp, #)
+            const diffComplexity = readingComplexity(a) - readingComplexity(b);
+            if (diffComplexity !== 0) return diffComplexity;
+
             const diffWeight = (a.weight || 0) - (b.weight || 0);
             if (diffWeight !== 0) return diffWeight;
-
-            // Prioritize non-compounds before compounds
-            const aCmp = a.raw.includes('+Cmp') || a.tags.includes('Cmp');
-            const bCmp = b.raw.includes('+Cmp') || b.tags.includes('Cmp');
-            if (!aCmp && bCmp) return -1;
-            if (aCmp && !bCmp) return 1;
 
             // When user typed with spell-relax, prioritize matching spell-relax readings
             if (SpellRelaxService.hasRelaxPattern(cleanWord, lang)) {
@@ -713,7 +711,7 @@ export class AnalyzerService {
         } else {
           // Unknown analyses: no genuine lexical readings and no +Cmp by themselves exist.
           // In the workbench morphological annotation for unknown analyses, retain access to guessed content.
-          guessedReadings.sort((a, b) => (a.weight || 0) - (b.weight || 0));
+          guessedReadings.sort((a, b) => readingComplexity(a) - readingComplexity(b) || (a.weight || 0) - (b.weight || 0));
           guessedReadings.guessedReadings = guessedReadings;
           guessedReadings.isUnknownGuessed = true;
           return guessedReadings;

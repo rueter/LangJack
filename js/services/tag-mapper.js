@@ -290,6 +290,18 @@ export const adpIsCase = (tags) => {
 };
 
 /**
+ * How complex a reading is, for ordering: 0 plain, 1 derived (Der, Der/...), 2 compound (Cmp, Cmp/..., #),
+ * 3 both. The simplest readings are listed first, compounds after those without compounding.
+ */
+export const readingComplexity = (r) => {
+  const raw = stripGuessTags((r && r.raw) || '');
+  const tags = raw.split(/[+#]/).filter(Boolean);
+  const derived = tags.some((t) => t === 'Der' || t.startsWith('Der/'));
+  const compound = raw.includes('#') || tags.some((t) => t === 'Cmp' || t.startsWith('Cmp/'));
+  return (derived ? 1 : 0) + (compound ? 2 : 0);
+};
+
+/**
  * A tag that makes a verb finite: a subject person/number ending (Sg1, Pl3, Du2) or a subject concord (ScSg1, ScPl3M).
  * Object concord (Oc...) and possessive (Px...) endings do not.
  */
