@@ -4,3 +4,4 @@ scratch/
 .DS_Store
 models/*hfstol
 !models/bundled_*.hfstol
+misc/
