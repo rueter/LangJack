@@ -1,67 +1,67 @@
 # Small sample of Apurinã (apu) entries, Portuguese and English glosses, to show the TSV format. Not the full lexicon.
-lemma	gloss	target_lang	pos	source_lang	notes
-aa	ah	por	Interj	apu	Apurinã interjection
-aa	oh	eng	Interj	apu	Apurinã	interjection
-aa	oh	por	Interj	apu	Apurinã interjection
-aiata	caçar	por	V	apu	Apurinã verb
-aiata	hunt	eng	V	apu	Apurinã	verb
-aiku	casa	por	N	apu	Apurinã noun
-aiku	house	eng	N	apu	Apurinã noun
-aiutetxi	placenta	por	N	apu	Apurinã noun
-aiuãke	taioca verdadeira	por	N	apu	Apurinã noun
-akekutatxi	molar	por	N	apu	Apurinã	noun
-akiriky	mutucão	por	N	apu	Apurinã	noun
-akiritha	call	eng	V	apu	Apurinã	verb
-akiritha	chamar	por	V	apu	Apurinã verb
-akyru	avó	por	N	apu	Apurinã noun
-akyru	grandmother	eng	N	apu	Apurinã	noun
-amakyry	tambaqui	por	N	apu	Apurinã	noun
-amapyty	abelha	por	N	apu	Apurinã	noun
-amapyty	bee	eng	N	apu	Apurinã	noun
-amaru	girl	eng	N	apu	Apurinã	noun
-amaru	menina	por	N	apu	Apurinã noun
-amary	boy	eng	N	apu	Apurinã	noun
-amary	menino	por	N	apu	Apurinã noun
-amianary	doença	por	N	apu	Apurinã	noun
-amuta	comprar	por	V	apu	Apurinã verb
-amãtxuary	macaco de taboca	por	N	apu	Apurinã	noun
-ana	filho	por	N	apu	Apurinã noun
-anhiiu	mosquito	por	N	apu	Apurinã noun
-anhika	conduzir	por	V	apu	Apurinã verb
-anhika	levar	por	V	apu	Apurinã verb
-anhika	take	eng	V	apu	Apurinã	verb
-anãna	abacaxi	por	N	apu	Apurinã noun
-anãnapẽe	vinho de abacaxi	por	N	apu	Apurinã	noun
-anãpa	cachorro	por	N	apu	Apurinã noun
-anãpa	dog	eng	N	apu	Apurinã noun
-asukuru	açúcar	por	N	apu	Apurinã noun
-asutatxi	ralo de mandioca	por	N	apu	Apurinã noun
-asĩkapi	cigarro	por	N	apu	Apurinã	noun
-atama	olhar	por	V	apu	Apurinã verb
-atama	see	eng	V	apu	Apurinã	verb
-atama	ver	por	V	apu	Apurinã verb
-atama	watch	eng	V	apu	Apurinã verb
-atana	tomorrow	eng	Adv	apu	Apurinã	adverb
-atsanary	macaco barrigudo	por	N	apu	Apurinã	noun
-atukatxi	sol	por	N	apu	Apurinã	noun
-atukatxi	sun	eng	N	apu	Apurinã noun
-kutxi	because	eng	CS	apu	Apurinã	subjunction
-kutxi	pois	por	CS	apu	Apurinã conjunction
-kutxi	porque	por	CS	apu	Apurinã conjunction
-kuwatxi	ninho	por	N	apu	Apurinã	noun
-kuxinekĩi	besouro	por	N	apu	Apurinã	noun
-kyky	homem	por	N	apu	Apurinã	noun
-kyky	man	eng	N	apu	Apurinã noun
-kynerepa	por que	por	Adv	apu	Apurinã	adverb
-kynerepa	why	eng	Adv	apu	Apurinã	adverb
-kypytyna	cotia	por	N	apu	Apurinã	noun
-kyru	grandmother	eng	N	apu	Apurinã	noun
-kysy	arco-íris	por	N	apu	Apurinã	noun
-kyta	ontem	por	Adv	apu	Apurinã	adverb
-kyta	yesterday	eng	Adv	apu	Apurinã adverb
-kãkiti	Apurinã	por	N	apu	Apurinã noun
-kãkiti	gente	por	N	apu	Apurinã noun
-kãkiti	pessoa	por	N	apu	Apurinã noun
-hãkiti	jaguar	eng	N	apu	Apurinã
-pupỹkary	Apurinã	eng	N	apu	Apurinã
-ĩthupa	forest	eng	N	apu	Apurinã
+lemma	gloss	target_lang	pos	source_lang	notes	target_pos
+aa	ah	por	Interj	apu	Apurinã interjection	Interj
+aa	oh	eng	Interj	apu	Apurinã interjection	Interj
+aa	oh	por	Interj	apu	Apurinã interjection	Interj
+aiata	caçar	por	V	apu	Apurinã verb	V
+aiata	hunt	eng	V	apu	Apurinã verb	V
+aiku	casa	por	N	apu	Apurinã noun	N
+aiku	house	eng	N	apu	Apurinã noun	N
+aiutetxi	placenta	por	N	apu	Apurinã noun	N
+aiuãke	taioca verdadeira	por	N	apu	Apurinã noun	N
+akekutatxi	molar	por	N	apu	Apurinã noun	N
+akiriky	mutucão	por	N	apu	Apurinã noun	N
+akiritha	call	eng	V	apu	Apurinã verb	V
+akiritha	chamar	por	V	apu	Apurinã verb	V
+akyru	avó	por	N	apu	Apurinã noun	N
+akyru	grandmother	eng	N	apu	Apurinã noun	N
+amakyry	tambaqui	por	N	apu	Apurinã noun	N
+amapyty	abelha	por	N	apu	Apurinã noun	N
+amapyty	bee	eng	N	apu	Apurinã noun	N
+amaru	girl	eng	N	apu	Apurinã noun	N
+amaru	menina	por	N	apu	Apurinã noun	N
+amary	boy	eng	N	apu	Apurinã noun	N
+amary	menino	por	N	apu	Apurinã noun	N
+amianary	doença	por	N	apu	Apurinã noun	N
+amuta	comprar	por	V	apu	Apurinã verb	V
+amãtxuary	macaco de taboca	por	N	apu	Apurinã noun	N
+ana	filho	por	N	apu	Apurinã noun	N
+anhiiu	mosquito	por	N	apu	Apurinã noun	N
+anhika	conduzir	por	V	apu	Apurinã verb	V
+anhika	levar	por	V	apu	Apurinã verb	V
+anhika	take	eng	V	apu	Apurinã verb	V
+anãna	abacaxi	por	N	apu	Apurinã noun	N
+anãnapẽe	vinho de abacaxi	por	N	apu	Apurinã noun	N
+anãpa	cachorro	por	N	apu	Apurinã noun	N
+anãpa	dog	eng	N	apu	Apurinã noun	N
+asukuru	açúcar	por	N	apu	Apurinã noun	N
+asutatxi	ralo de mandioca	por	N	apu	Apurinã noun	N
+asĩkapi	cigarro	por	N	apu	Apurinã noun	N
+atama	olhar	por	V	apu	Apurinã verb	V
+atama	see	eng	V	apu	Apurinã verb	V
+atama	ver	por	V	apu	Apurinã verb	V
+atama	watch	eng	V	apu	Apurinã verb	V
+atana	tomorrow	eng	Adv	apu	Apurinã adverb	Adv
+atsanary	macaco barrigudo	por	N	apu	Apurinã noun	N
+atukatxi	sol	por	N	apu	Apurinã noun	N
+atukatxi	sun	eng	N	apu	Apurinã noun	N
+kutxi	because	eng	CS	apu	Apurinã subjunction	CS
+kutxi	pois	por	CS	apu	Apurinã conjunction	CS
+kutxi	porque	por	CS	apu	Apurinã conjunction	CS
+kuwatxi	ninho	por	N	apu	Apurinã noun	N
+kuxinekĩi	besouro	por	N	apu	Apurinã noun	N
+kyky	homem	por	N	apu	Apurinã noun	N
+kyky	man	eng	N	apu	Apurinã noun	N
+kynerepa	por que	por	Adv	apu	Apurinã adverb	Adv
+kynerepa	why	eng	Adv	apu	Apurinã adverb	Adv
+kypytyna	cotia	por	N	apu	Apurinã noun	N
+kyru	grandmother	eng	N	apu	Apurinã noun	N
+kysy	arco-íris	por	N	apu	Apurinã noun	N
+kyta	ontem	por	Adv	apu	Apurinã adverb	Adv
+kyta	yesterday	eng	Adv	apu	Apurinã adverb	Adv
+kãkiti	Apurinã	por	N	apu	Apurinã noun	N
+kãkiti	gente	por	N	apu	Apurinã noun	N
+kãkiti	pessoa	por	N	apu	Apurinã noun	N
+hãkiti	jaguar	eng	N	apu	Apurinã	N
+pupỹkary	Apurinã	eng	N	apu	Apurinã	N
+ĩthupa	forest	eng	N	apu	Apurinã	N

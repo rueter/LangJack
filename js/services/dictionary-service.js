@@ -261,6 +261,7 @@ export class DictionaryService {
         const tgt_lang = normalizeLangCode(cols[2] || defaultTgt);
         const pos = cols[3] || '';
         const src_lang = normalizeLangCode(cols[4] || defaultSrc);
+        const tgt_pos = cols[6] || ''; // optional 7th column: part of speech of the gloss
         if (lemma && rawGloss) {
           const glossParts = splitGlossItem(rawGloss);
           for (const gloss of glossParts) {
@@ -268,6 +269,7 @@ export class DictionaryService {
               src_lang,
               lemma,
               pos,
+              tgt_pos,
               tgt_lang,
               gloss,
               source: 'packaged_dictionary'

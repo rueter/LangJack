@@ -10,7 +10,7 @@
 
 import assert from 'node:assert';
 import fs from 'node:fs';
-import { dictionaryService, UPLOADED_DICT_PREFIX } from '../js/services/dictionary-service.js';
+import { dictionaryService, UPLOADED_DICT_PREFIX, CUSTOM_POS_CHOICES } from '../js/services/dictionary-service.js';
 import { storageService } from '../js/services/storage-service.js';
 
 console.log('=== Running Tests for Private Dictionaries ===\n');
@@ -67,8 +67,22 @@ const mine = dictionaryService.customEntriesCache;
 assert(!mine.some((e) => e.lemma === 'lemma' && e.gloss === 'gloss'), 'the header row is not an entry');
 const aiku = mine.filter((e) => e.lemma === 'aiku' && e.tgt_lang === 'por');
 assert(aiku.length >= 1 && aiku[0].gloss === 'casa' && aiku[0].pos === 'N', 'rows are read with their POS');
+assert.strictEqual(aiku[0].tgt_pos, 'N', 'the target POS is read too');
 const imported = mine.filter((e) => e.notes === 'Imported from spreadsheet');
 for (const e of imported) await dictionaryService.deleteCustomEntry(e.id);
+
+// both packaged dictionaries use the download format, with the simple POS tags on both sides
+for (const file of ['models/dict-apu-por.tsv', 'models/dict-koi.tsv']) {
+  const lines = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l && !l.startsWith('#'));
+  assert.strictEqual(lines[0], 'lemma\tgloss\ttarget_lang\tpos\tsource_lang\tnotes\ttarget_pos', `${file}: header`);
+  for (const line of lines.slice(1)) {
+    const cols = line.split('\t');
+    assert.strictEqual(cols.length, 7, `${file}: seven columns in "${line}"`);
+    assert(CUSTOM_POS_CHOICES.includes(cols[3]), `${file}: pos ${cols[3]} is a simple POS`);
+    assert(CUSTOM_POS_CHOICES.includes(cols[6]), `${file}: target_pos ${cols[6]} is a simple POS`);
+  }
+}
+console.log('✓ Packaged dictionaries are in the download format');
 
 // an export (with the new target_pos column) imports again without a bogus header entry
 await dictionaryService.addCustomEntry({ src_lang: 'apu', lemma: 'exportme', pos: 'V', tgt_pos: 'N', tgt_lang: 'por', gloss: 'exportado' }, { requirePos: true });
