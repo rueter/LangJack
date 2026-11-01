@@ -41,7 +41,35 @@ for (const [raw, upos, expected] of [
   ['joku+Pron+Indef', 'PRON', 'PronType=Ind'],
   ['joku+Pron+Indef+Sg+Nom', 'PRON', 'Case=Nom|Number=Sing|PronType=Ind'],
   ['jokin+Det+Indef', 'DET', 'PronType=Ind'],
-  ['x+N+Ine+Indef', 'NOUN', 'Case=Ine|Definite=Ind']
+  ['x+N+Ine+Indef', 'NOUN', 'Case=Ine|Definite=Ind'],
+  // any pronoun subtype on a PRON or DET is PronType
+  ['kuka+Pron+Rel+Sg+Nom', 'PRON', 'Case=Nom|Number=Sing|PronType=Rel'],
+  ['kuka+Pron+Interr+Sg+Nom', 'PRON', 'Case=Nom|Number=Sing|PronType=Int'],
+  ['tämä+Pron+Dem+Sg+Nom', 'PRON', 'Case=Nom|Number=Sing|PronType=Dem'],
+  ['tämä+Det+Dem+Sg+Nom', 'DET', 'Case=Nom|Number=Sing|PronType=Dem'],
+  ['minä+Pron+Pers+Sg1+Nom', 'PRON', 'Case=Nom|Number=Sing|Person=1|PronType=Prs'],
+  ['kaikki+Det+Tot', 'DET', 'PronType=Tot'],
+  ['kukaan+Pron+Neg', 'PRON', 'PronType=Neg'],
+  ['некод+Pron+Pron+Neg+Sg+Nom', 'PRON', 'Case=Nom|Number=Sing|PronType=Neg'],
+  ['мый+Pron+Nom+Rel', 'PRON', 'Case=Nom|PronType=Rel'],
+  ['itse+Pron+Refl+Sg+Nom', 'PRON', 'Case=Nom|Number=Sing|PronType=Prs|Reflex=Yes'],
+  ['toinen+Pron+Recip+Sg+Nom', 'PRON', 'Case=Nom|Number=Sing|PronType=Rcp'],
+  // Erzya: +Indef / +Def after the case tag is definiteness (analyzer output of the myv model)
+  ['кудо+N+Sg+Nom+Indef', 'NOUN', 'Case=Nom|Definite=Ind|Number=Sing'],
+  ['кудо+N+Sg+Nom+Def', 'NOUN', 'Case=Nom|Definite=Def|Number=Sing'],
+  ['ломань+A+Sg+Nom+Indef', 'ADJ', 'Case=Nom|Definite=Ind|Number=Sing'],
+  ['те+Pron+Dem+Sg+Gen+Indef', 'PRON', 'Case=Gen|Definite=Ind|Number=Sing|PronType=Dem'],
+  ['мезе+Pron+Rel+Sg+Nom+Indef', 'PRON', 'Case=Nom|Definite=Ind|Number=Sing|PronType=Rel'],
+  ['мезе+Pron+Sg+Nom+Indef', 'PRON', 'Case=Nom|Definite=Ind|Number=Sing'],
+  // PronType directly after +Pron / +Det; Definite only after a case tag, no feature in any other place
+  ['x+Pron+Sg+Indef', 'PRON', 'Number=Sing'],
+  ['x+N+Indef', 'NOUN', '_'],
+  ['x+N+Def', 'NOUN', '_'],
+  ['x+N+Sg+Def+Nom', 'NOUN', 'Case=Nom|Number=Sing'],
+  ['x+Pron+Indef', 'PRON', 'PronType=Ind'],
+  ['x+Det+Indef+Sg', 'DET', 'Number=Sing|PronType=Ind'],
+  ['x+Adv+Rel', 'ADV', '_'],
+  ['x+N+Rel', 'NOUN', '_']
 ]) {
   const r = TagMapper.parse(raw, 0, 'fin');
   assert.strictEqual(r.upos, upos, `${raw}: UPOS`);
@@ -50,8 +78,23 @@ for (const [raw, upos, expected] of [
 assert.deepStrictEqual(featsForTag('Indef', 'fin', 'PRON'), { feature: 'PronType', value: 'Ind' });
 assert.deepStrictEqual(featsForTag('Indef', 'fin', 'DET'), { feature: 'PronType', value: 'Ind' });
 assert.deepStrictEqual(featsForTag('Indef', 'fin', 'NOUN'), { feature: 'Definite', value: 'Ind' });
+assert.deepStrictEqual(featsForTag('Indef', 'myv', 'PRON', { afterCase: true }), { feature: 'Definite', value: 'Ind' }, 'after a case tag: definiteness');
+assert.deepStrictEqual(featsForTag('Indef', 'myv', 'DET', { afterCase: false, afterPos: true }), { feature: 'PronType', value: 'Ind' });
+assert.deepStrictEqual(featsForTag('Rel', 'myv', 'PRON', { afterCase: true }), { feature: 'PronType', value: 'Rel' }, 'only Indef is position-sensitive');
+// Moksha (constructed strings; there is no mdf model in models/) behaves like Erzya
+for (const [raw, upos, expected] of [
+  ['x+N+Sg+Nom+Def', 'NOUN', 'Case=Nom|Definite=Def|Number=Sing'],
+  ['x+Pron+Dem+Sg+Gen+Indef', 'PRON', 'Case=Gen|Definite=Ind|Number=Sing|PronType=Dem'],
+  ['x+Pron+Indef+Sg+Nom', 'PRON', 'Case=Nom|Number=Sing|PronType=Ind']
+]) {
+  const r = TagMapper.parse(raw, 0, 'mdf');
+  assert.strictEqual(r.upos, upos);
+  assert.strictEqual(r.feats, expected, `mdf ${raw}`);
+}
 assert.strictEqual([...featsFromGloss('INDEF', 'PRON').feats].join('|'), 'PronType,Ind');
 assert.strictEqual([...featsFromGloss('INDEF', 'NOUN').feats].join('|'), 'Definite,Ind');
+assert.strictEqual([...featsFromGloss('NOM-INDEF', 'PRON').feats].join('|'), 'Case,Nom|Definite,Ind', 'INDEF after a case morpheme is definiteness');
+assert.strictEqual([...featsFromGloss('INDEF-NOM', 'PRON').feats].join('|'), 'PronType,Ind|Case,Nom');
 
 // the negation verb, (V+)Aux+Neg: AUX, Polarity=Neg, deprel aux:neg, in the listed languages only
 assert.deepStrictEqual(NEGATIVE_AUX_LANGS, [...NEGATIVE_AUX_LANGS].sort(), 'the language list is alphabetical');

@@ -287,15 +287,41 @@ export const isNegativeAux = (tags, lang) =>
   hasNegativeAux(lang) && (tags || []).includes('Neg') && (tags || []).some((t) => t === 'Aux' || t === 'V');
 
 /**
+ * Pronoun and determiner subtypes: on a word whose UPOS is PRON or DET, the tag that names the kind of pronoun
+ * (usually the one right after +Pron / +Det) is the PronType value (UD: PRON and DET carry a PronType).
+ */
+export const PRONTYPE_TAGS = {
+  Art: 'Art', Dem: 'Dem', Emp: 'Emp', Exc: 'Exc', Indef: 'Ind', Interr: 'Int', Neg: 'Neg',
+  Pers: 'Prs', Recip: 'Rcp', Refl: 'Prs', Rel: 'Rel', Tot: 'Tot'
+};
+
+/**
  * What the analyzer tag `tag` means for FEATS in language `lang`: the language's own mapping when it has one,
  * otherwise the general TAG_TO_FEATS entry. Returns one { feature, value }, an array of them, or undefined.
- * `upos` (optional) matters for +Indef: on a pronoun or determiner it is PronType=Ind (+Pron+Indef, +Det+Indef),
- * elsewhere it stays Definite=Ind.
+ * `upos` (optional) matters for the pronoun subtypes of PRONTYPE_TAGS: on a PRON or DET, +Indef is PronType=Ind
+ * (not Definite=Ind), +Rel is PronType=Rel, and so on; +Refl is PronType=Prs with Reflex=Yes.
+ * Tag order decides: +Indef directly after +Pron / +Det is PronType=Ind (te+Pron+Indef+Sg+Nom); +Def and +Indef after a
+ * case tag are definiteness, Definite=Def / Definite=Ind (Erzya, Moksha: kudo+N+Sg+Nom+Indef, te+Pron+Dem+Sg+Gen+Indef).
+ * In any other place they give no feature. `place` is { afterCase, afterPos }: a case tag came before the tag /
+ * the tag before it is Pron or Det. Without `place` (the gloss route, listings) the order is unknown and no tag is held back.
  */
-export const featsForTag = (tag, lang, upos = '') => {
-  if (tag === 'Indef' && (upos === 'PRON' || upos === 'DET')) return { feature: 'PronType', value: 'Ind' };
+export const featsForTag = (tag, lang, upos = '', place = {}) => {
+  const ordered = place.afterCase !== undefined;
+  if ((upos === 'PRON' || upos === 'DET') && PRONTYPE_TAGS[tag] && !(tag === 'Indef' && place.afterCase)) {
+    if (tag !== 'Indef' || !ordered || place.afterPos) {
+      const type = { feature: 'PronType', value: PRONTYPE_TAGS[tag] };
+      return tag === 'Refl' ? [type, { feature: 'Reflex', value: 'Yes' }] : type;
+    }
+  }
+  if (ordered && !place.afterCase && (tag === 'Def' || tag === 'Indef')) return undefined;
   const own = LANG_TAG_TO_FEATS[langKey(lang)];
   return (own && own[tag]) || TAG_TO_FEATS[tag];
+};
+
+/** Does the analyzer tag `tag` give a Case value? */
+export const isCaseTag = (tag, lang) => {
+  const item = featsForTag(tag, lang);
+  return (Array.isArray(item) ? item : [item]).some((f) => f && f.feature === 'Case');
 };
 
 /**
@@ -596,9 +622,11 @@ export class TagMapper {
 
     // Map features
     const featsMap = {};
-    for (const tag of cleanTags) {
+    let afterCase = false;
+    for (const [i, tag] of cleanTags.entries()) {
       if (tag === 'Adp' && !adpIsCase(cleanTags)) continue; // the POS tag, not a case
-      const item = featsForTag(tag, lang, upos);
+      const item = featsForTag(tag, lang, upos, { afterCase, afterPos: i > 0 && ['Pron', 'PRON', 'Det', 'DET'].includes(cleanTags[i - 1]) });
+      if (isCaseTag(tag, lang)) afterCase = true;
       if (item) {
         if (Array.isArray(item)) {
           for (const sub of item) {

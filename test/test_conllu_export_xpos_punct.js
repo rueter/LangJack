@@ -76,3 +76,10 @@ for (const lang of ['sme', 'fin', 'kpv']) {
 const notNeg = negExport('deu', 'ii+V+Neg+Ind+Sg3');
 assert.strictEqual(notNeg[3], 'VERB');
 assert.strictEqual(notNeg[7], '_');
+
+// Erzya тень, reading as the myv analyzer gives it: lemma, UPOS, XPOS (tags only), FEATS with PronType and Definite
+const tenRow = ConlluExporter.export([{
+  sent_id: 4, text: 'тень', lang: 'myv',
+  tokens: [{ form: 'тень', lang: 'myv', selectedReading: TagMapper.parse('те+Pron+Dem+Sg+Gen+Indef', 0, 'myv') }]
+}]).split('\n').filter((l) => l && !l.startsWith('#'))[0].split('\t');
+assert.deepStrictEqual(tenRow.slice(1, 6), ['тень', 'те', 'PRON', 'Pron+Dem+Sg+Gen+Indef', 'Case=Gen|Definite=Ind|Number=Sing|PronType=Dem']);

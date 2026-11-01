@@ -85,8 +85,8 @@ const ROLES = { S: 'subj', A: 'subj', SBJ: 'subj', O: 'obj', P: 'obj', OBJ: 'obj
 const PERSON_NUMBER = /^([123])(SG|PL|DU)?$/;
 const GRAMMATICAL = /^[\p{Lu}\d][\p{Lu}\d./]*$/u; // no lowercase letter: a grammatical morpheme, not a lexical gloss
 
-const featsOfTag = (tag, lang, upos) => {
-  const item = featsForTag(tag, lang, upos);
+const featsOfTag = (tag, lang, upos, place = {}) => {
+  const item = featsForTag(tag, lang, upos, place);
   if (!item) return null;
   return (Array.isArray(item) ? item : [item]).map((f) => [f.feature, f.value]);
 };
@@ -135,8 +135,8 @@ export function featsFromGloss(gloss, upos = '', lang = '') {
         bundle.push(['Number', NUMBERS[part]]);
       } else if (GENDERS[part]) {
         bundle.push(['Gender', GENDERS[part]]);
-      } else if (ABBR_TO_TAG[part] && featsOfTag(ABBR_TO_TAG[part], lang, upos)) {
-        found.push(...featsOfTag(ABBR_TO_TAG[part], lang, upos));
+      } else if (ABBR_TO_TAG[part] && featsOfTag(ABBR_TO_TAG[part], lang, upos, feats.has('Case') ? { afterCase: true } : {})) {
+        found.push(...featsOfTag(ABBR_TO_TAG[part], lang, upos, feats.has('Case') ? { afterCase: true } : {}));
       } else if (ABBR_EXTRA[part]) {
         found.push(...Object.entries(ABBR_EXTRA[part]));
       } else {
