@@ -60,3 +60,19 @@ assert.strictEqual(mixed[0][5], 'Case=Nom|Degree=Pos|Number=Sing', 'FEATS sorted
 assert.strictEqual(mixed[0][9], 'AltReadings=2|Gloss[en]=very|SpaceAfter=No', 'MISC sorted alphabetically');
 
 console.log('✓ all passed');
+
+// the negation verb: AUX, Polarity=Neg, aux:neg (only in the listed languages)
+const negExport = (lang, raw) => ConlluExporter.export([{
+  sent_id: 3, text: 'ii sai', lang,
+  tokens: [{ form: 'ii', lang, selectedReading: TagMapper.parse(raw, 0, lang) }]
+}]).split('\n').filter((l) => l && !l.startsWith('#')).map((l) => l.split('\t'))[0];
+for (const lang of ['sme', 'fin', 'kpv']) {
+  const row = negExport(lang, 'ii+V+Aux+Neg+Ind+Sg3');
+  assert.strictEqual(row[3], 'AUX', `${lang}: UPOS`);
+  assert.strictEqual(row[4], 'V+Aux+Neg+Ind+Sg3', `${lang}: XPOS keeps the analysis tags`);
+  assert.strictEqual(row[5], 'Mood=Ind|Number=Sing|Person=3|Polarity=Neg', `${lang}: FEATS`);
+  assert.strictEqual(row[7], 'aux:neg', `${lang}: DEPREL`);
+}
+const notNeg = negExport('deu', 'ii+V+Neg+Ind+Sg3');
+assert.strictEqual(notNeg[3], 'VERB');
+assert.strictEqual(notNeg[7], '_');

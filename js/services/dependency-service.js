@@ -62,6 +62,7 @@ export const STANDARD_UD_SUBTYPES = [
   { label: 'nsubj:pass', category: 'subtype', desc: 'Passive nominal subject' },
   { label: 'csubj:pass', category: 'subtype', desc: 'Passive clausal subject' },
   { label: 'aux:pass', category: 'subtype', desc: 'Passive auxiliary' },
+  { label: 'aux:neg', category: 'subtype', desc: 'Negation auxiliary (negation verb)' },
   { label: 'obl:agent', category: 'subtype', desc: 'Agent in passive construction' },
   { label: 'obl:lmod', category: 'subtype', desc: 'Locative oblique' },
   { label: 'obl:tmod', category: 'subtype', desc: 'Temporal oblique' },
@@ -343,7 +344,7 @@ export class DependencyService {
 
       if (upos === 'AUX') {
         tok.head = rootId;
-        tok.deprel = 'aux';
+        tok.deprel = (tok.customReading || tok.selectedReading)?.deprel === 'aux:neg' ? 'aux:neg' : 'aux';
         return;
       }
 

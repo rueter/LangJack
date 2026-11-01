@@ -85,8 +85,8 @@ const ROLES = { S: 'subj', A: 'subj', SBJ: 'subj', O: 'obj', P: 'obj', OBJ: 'obj
 const PERSON_NUMBER = /^([123])(SG|PL|DU)?$/;
 const GRAMMATICAL = /^[\p{Lu}\d][\p{Lu}\d./]*$/u; // no lowercase letter: a grammatical morpheme, not a lexical gloss
 
-const featsOfTag = (tag, lang) => {
-  const item = featsForTag(tag, lang);
+const featsOfTag = (tag, lang, upos) => {
+  const item = featsForTag(tag, lang, upos);
   if (!item) return null;
   return (Array.isArray(item) ? item : [item]).map((f) => [f.feature, f.value]);
 };
@@ -135,8 +135,8 @@ export function featsFromGloss(gloss, upos = '', lang = '') {
         bundle.push(['Number', NUMBERS[part]]);
       } else if (GENDERS[part]) {
         bundle.push(['Gender', GENDERS[part]]);
-      } else if (ABBR_TO_TAG[part] && featsOfTag(ABBR_TO_TAG[part], lang)) {
-        found.push(...featsOfTag(ABBR_TO_TAG[part], lang));
+      } else if (ABBR_TO_TAG[part] && featsOfTag(ABBR_TO_TAG[part], lang, upos)) {
+        found.push(...featsOfTag(ABBR_TO_TAG[part], lang, upos));
       } else if (ABBR_EXTRA[part]) {
         found.push(...Object.entries(ABBR_EXTRA[part]));
       } else {
@@ -316,7 +316,7 @@ export function summarizeReadings(readings, row, choice = null) {
 /**
  * Baseline HEAD/DEPREL guesses for a sentence that has no dependencies yet, from the UPOS sequence
  * (dependency-service heuristics). Returns [] when any word already has a head: partial trees are not guessed at.
- * @param {Array<{ id: string, upos: string, head: string }>} words  word rows in order, ids 1..n
+ * @param {Array<{ id: string, upos: string, head: string, negAux?: boolean }>} words  word rows in order, ids 1..n (negAux: the negation verb, aux:neg)
  * @returns {Array<{ id: string, head: string, deprel: string }>}
  */
 export function baselineDependencies(words) {
@@ -326,6 +326,6 @@ export function baselineDependencies(words) {
   return words.map((w, i) => ({
     id: w.id,
     head: String(words[(inferred[i].head || 0) - 1]?.id ?? inferred[i].head),
-    deprel: inferred[i].deprel
+    deprel: words[i].negAux && inferred[i].deprel === 'aux' ? 'aux:neg' : inferred[i].deprel
   }));
 }

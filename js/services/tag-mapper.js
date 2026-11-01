@@ -265,17 +265,35 @@ export const LANG_TAG_TO_FEATS = {
   myv: ERZYA_MOKSHA_PAST
 };
 
+/**
+ * Languages whose negation verb is analysed (V+)Aux+Neg: it is AUX, Polarity=Neg, deprel aux:neg.
+ * Keep the codes in alphabetical order; add a language by adding its code here.
+ */
+export const NEGATIVE_AUX_LANGS = [
+  'fin', 'koi', 'kpv', 'mdf', 'mhr', 'mrj', 'myv', 'sme', 'sms', 'udm', 'vro'
+];
+
 /** Language code of a language setting such as "kpv", "kpv_lattice" or "Komi-Zyrian (kpv)" -> "kpv"; "" when unknown. */
 const langKey = (lang) => {
   const m = String(lang || '').toLowerCase().match(/\(([a-z]{2,3})\)|^([a-z]{2,3})(?![a-z])/);
   return m ? (m[1] || m[2]) : '';
 };
 
+/** Is `lang` one of NEGATIVE_AUX_LANGS? */
+export const hasNegativeAux = (lang) => NEGATIVE_AUX_LANGS.includes(langKey(lang));
+
+/** The negation verb of a language in NEGATIVE_AUX_LANGS: +Neg on a verb or auxiliary ((V+)Aux+Neg). */
+export const isNegativeAux = (tags, lang) =>
+  hasNegativeAux(lang) && (tags || []).includes('Neg') && (tags || []).some((t) => t === 'Aux' || t === 'V');
+
 /**
  * What the analyzer tag `tag` means for FEATS in language `lang`: the language's own mapping when it has one,
  * otherwise the general TAG_TO_FEATS entry. Returns one { feature, value }, an array of them, or undefined.
+ * `upos` (optional) matters for +Indef: on a pronoun or determiner it is PronType=Ind (+Pron+Indef, +Det+Indef),
+ * elsewhere it stays Definite=Ind.
  */
-export const featsForTag = (tag, lang) => {
+export const featsForTag = (tag, lang, upos = '') => {
+  if (tag === 'Indef' && (upos === 'PRON' || upos === 'DET')) return { feature: 'PronType', value: 'Ind' };
   const own = LANG_TAG_TO_FEATS[langKey(lang)];
   return (own && own[tag]) || TAG_TO_FEATS[tag];
 };
@@ -360,9 +378,10 @@ export class TagMapper {
    * Directly derives Universal Dependencies UPOS from a morphological analysis string or tag array.
    * e.g., NOUN < +N, VERB < +V, PROPN < +Prop, ADJ < +A, ADV < +Adv
    * @param {string|string[]} analysisOrTags
+   * @param {string|null} [lang=null]  language of the text: the negation verb is AUX in NEGATIVE_AUX_LANGS
    * @returns {string} UPOS tag (e.g. 'NOUN', 'VERB', 'ADJ', etc.)
    */
-  static deriveUpos(analysisOrTags) {
+  static deriveUpos(analysisOrTags, lang = null) {
     if (!analysisOrTags) return 'X';
 
     let tags = [];
@@ -378,6 +397,8 @@ export class TagMapper {
     }
 
     const tagSet = new Set(adpIsCase(tags) ? tags.filter((t) => t !== 'Adp') : tags);
+
+    if (isNegativeAux(tags, lang)) return 'AUX';
 
     // 1. Proper Noun precedence (Prop, Sem/Plc, Sem/Sur, Sem/Mal, Sem/Fem, etc.)
     if (tagSet.has('Prop') || tagSet.has('PROPN') || tags.some(t => t.startsWith('Sem/') || t === 'Prop')) {
@@ -556,7 +577,8 @@ export class TagMapper {
     }
 
     // Directly derive UPOS from cleanTags (or lemma)
-    const upos = TagMapper.deriveUpos(cleanTags.length > 0 ? cleanTags : [lemma]);
+    const upos = TagMapper.deriveUpos(cleanTags.length > 0 ? cleanTags : [lemma], lang);
+    const negativeAux = isNegativeAux(cleanTags, lang);
     let pos = TagMapper.uposToPosTag(upos);
 
     // If an explicit matching tag exists in tags, preserve that specific tag for pos
@@ -576,7 +598,7 @@ export class TagMapper {
     const featsMap = {};
     for (const tag of cleanTags) {
       if (tag === 'Adp' && !adpIsCase(cleanTags)) continue; // the POS tag, not a case
-      const item = featsForTag(tag, lang);
+      const item = featsForTag(tag, lang, upos);
       if (item) {
         if (Array.isArray(item)) {
           for (const sub of item) {
@@ -589,6 +611,9 @@ export class TagMapper {
         featsMap['Typo'] = 'Yes';
       }
     }
+
+    // the negation verb: Polarity=Neg (its deprel is aux:neg)
+    if (negativeAux) featsMap.Polarity = 'Neg';
 
     // a finite verb (UD: VERB with a person/number ending) is VerbForm=Fin
     if (impliesFinite(upos, cleanTags, featsMap)) featsMap.VerbForm = 'Fin';
@@ -620,7 +645,8 @@ export class TagMapper {
       isGuessed,
       isOrthErr,
       orthErrTag: orthErrTag || null,
-      isSplRlx
+      isSplRlx,
+      deprel: negativeAux ? 'aux:neg' : null
     };
   }
 

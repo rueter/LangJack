@@ -11,7 +11,7 @@
 import { storageService } from './storage-service.js';
 import { dictionaryService } from './dictionary-service.js';
 import { analyzerService, normalizeLangCode } from './analyzer-service.js';
-import { stripGuessTags } from './tag-mapper.js';
+import { stripGuessTags, hasNegativeAux } from './tag-mapper.js';
 import { featureInventory, usageOfFile, UNIVERSAL_FEATURES, UNIVERSAL_UPOS, UNIVERSAL_DEPRELS } from './ud-feature-inventory.js';
 import {
   ENHANCE_COLUMNS, LOCKED_COLUMNS, isEmptyCell, mergeFeats, featsToString, parseFeats, featsFromGloss, summarizeReadings, baselineDependencies
@@ -933,7 +933,10 @@ export class ConlluImportService {
       const base = (w) => ({ sentIndex: idx, lineIdx: w.lineIdx, tokenId: w.cols[0], form: w.cols[1] });
 
       if (cols.includes('head') || cols.includes('deprel')) {
-        const guesses = baselineDependencies(words.map((w) => ({ id: w.cols[0], upos: w.cols[3], head: w.cols[6] })));
+        const guesses = baselineDependencies(words.map((w) => ({
+          id: w.cols[0], upos: w.cols[3], head: w.cols[6],
+          negAux: w.cols[3] === 'AUX' && hasNegativeAux(srcLang) && /(^|\|)Polarity=Neg(\||$)/.test(w.cols[5])
+        })));
         words.forEach((w, i) => {
           const g = guesses[i];
           if (!g) return;

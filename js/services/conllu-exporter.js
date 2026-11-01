@@ -89,7 +89,7 @@ export class ConlluExporter {
         const reading = tok.customReading || tok.selectedReading || {};
         const punct = Boolean(tok.isPunct || tok.upos === 'PUNCT' || isPunctForm(form));
         const lemma = punct ? form : (tok.lemma || reading.lemma || form);
-        const upos = punct ? 'PUNCT' : (tok.upos || reading.upos || TagMapper.deriveUpos(reading.raw || form));
+        const upos = punct ? 'PUNCT' : (tok.upos || reading.upos || TagMapper.deriveUpos(reading.raw || form, tok.lang || sent.lang || language || analyzerService.activeLang));
         const fullRaw = reading.cleanRaw || stripGuessTags(reading.raw) || '';
         // column 5 holds the tags only, never a repeat of the whole analysis (lemma stem included)
         const xpos = punct
@@ -132,7 +132,7 @@ export class ConlluExporter {
         const head = (tok.head !== undefined && tok.head !== null && tok.head !== '' && tok.head !== '_') ? tok.head : '_';
         const deprel = (tok.deprel && tok.deprel !== '_')
           ? tok.deprel
-          : (punct ? 'punct' : '_');
+          : (punct ? 'punct' : (reading.deprel || (reading.raw && TagMapper.parse(reading.raw, 0, tok.lang || sent.lang || language || analyzerService.activeLang).deprel) || '_'));
         const deps = tok.deps || '_';
 
         // Check whether this token uses a spell relax or has an orthographical error

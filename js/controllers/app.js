@@ -1168,7 +1168,7 @@ export class WorkbenchApp {
             ? targetReading.tags
             : [TagMapper.uposToPosTag(tok.upos || 'NOUN')];
           targetReading.raw = `${newLemma}+${tags.join('+')}`;
-          tok.upos = TagMapper.deriveUpos(targetReading.raw);
+          tok.upos = TagMapper.deriveUpos(targetReading.raw, tok.lang || this.srcLang);
           uposSelect.value = tok.upos;
         }
         this.fetchGlossesForToken(tok);
@@ -1200,7 +1200,7 @@ export class WorkbenchApp {
         targetReading.feats = parsed.feats;
         targetReading.featsMap = parsed.featsMap;
         // Re-derive UPOS to ensure direct derivation from morphological analysis output (NOUN < +N)
-        tok.upos = TagMapper.deriveUpos(targetReading.raw);
+        tok.upos = TagMapper.deriveUpos(targetReading.raw, tok.lang || this.srcLang);
       }
       this.renderInterlinear({ sIdx, tIdx });
       this.updateExports();
@@ -1281,7 +1281,7 @@ export class WorkbenchApp {
           tok.selectedGuessedIndex = gIdx;
           tok.customReading = null;
           tok.lemma = gr.lemma || tok.form;
-          tok.upos = TagMapper.deriveUpos(gr.raw);
+          tok.upos = TagMapper.deriveUpos(gr.raw, tok.lang || this.srcLang);
           lemmaInput.value = tok.lemma;
           uposSelect.value = tok.upos;
           this.fetchGlossesForToken(tok);
@@ -1296,7 +1296,7 @@ export class WorkbenchApp {
         tok.customReading = null;
         tok.lemma = tok.selectedReading ? tok.selectedReading.lemma : tok.form;
         // Directly derive UPOS from selected reading's morphological analysis output (NOUN < +N):
-        tok.upos = tok.selectedReading ? TagMapper.deriveUpos(tok.selectedReading.raw) : 'NOUN';
+        tok.upos = tok.selectedReading ? TagMapper.deriveUpos(tok.selectedReading.raw, tok.lang || this.srcLang) : 'NOUN';
         lemmaInput.value = tok.lemma;
         uposSelect.value = tok.upos;
         this.fetchGlossesForToken(tok);
@@ -1869,7 +1869,7 @@ export class WorkbenchApp {
         if (reading) {
           if (tok.lemma) reading.lemma = tok.lemma;
           if (reading.raw) {
-            tok.upos = TagMapper.deriveUpos(reading.raw);
+            tok.upos = TagMapper.deriveUpos(reading.raw, tok.lang || this.srcLang);
             reading.upos = tok.upos;
           } else if (tok.upos) {
             reading.upos = tok.upos;
