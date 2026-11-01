@@ -122,6 +122,9 @@ export function splitGlossItem(rawGloss) {
  * Parts of speech a custom gloss can have: the Ve'rdd set, so an entry can be sent there later. "UND" (undetermined)
  * is not a part of speech, it means "not known yet", so it does not count.
  */
+/** The details of a custom entry that go with it to Ve'rdd (see updateCustomEntryDetails). */
+export const CUSTOM_DETAIL_FIELDS = ['src_homo', 'tgt_homo', 'ex_src', 'ex_tgt', 'ex_form'];
+
 export const CUSTOM_POS_CHOICES = VERDD_POS_FALLBACK.filter((p) => p !== POS_UNDETERMINED);
 
 /** The canonical POS for what a user or an HFST tag gave ("n", "V", "Po"), or '' when it is no usable part of speech. */
@@ -726,6 +729,46 @@ export class DictionaryService {
   /** Sets the part of speech of the target gloss of an existing custom entry. */
   updateCustomEntryTgtPos(id, pos) {
     return this._setEntryPos(id, 'tgt_pos', pos, 'target gloss');
+  }
+
+  /**
+   * Sets the details an entry carries for Ve'rdd: the homonym numerals of the headword (src_homo) and of the gloss (tgt_homo)
+   * and the example sentence pair (ex_src with the word as it stands in it, ex_form; ex_tgt with the gloss). A blank value
+   * clears the field; a homonym numeral is 0 or a positive whole number.
+   */
+  async updateCustomEntryDetails(id, fields) {
+    const entry = this.customEntriesCache.find((e) => e.id === id);
+    if (!entry) throw new Error('Unknown entry');
+    const next = { ...entry };
+    for (const [key, value] of Object.entries(fields || {})) {
+      if (!CUSTOM_DETAIL_FIELDS.includes(key)) throw new Error(`Not a detail of a custom entry: ${key}`);
+      const text = String(value ?? '').trim();
+      if (key === 'src_homo' || key === 'tgt_homo') {
+        if (text !== '' && !/^\d+$/.test(text)) throw new Error('A homonym number is 0 or a positive whole number.');
+        if (text === '') delete next[key]; else next[key] = Number(text);
+      } else if (text === '') {
+        delete next[key];
+      } else {
+        next[key] = text;
+      }
+    }
+    await storageService.addDictionaryEntry(next);
+    await this.refreshCustomEntries();
+    return next;
+  }
+
+  /** Records that an entry now lives in Ve'rdd: when, the lexeme ids, and the homonym numerals Ve'rdd used. */
+  async markEntrySent(id, { sourceId, targetId, srcHomo, tgtHomo } = {}) {
+    const entry = this.customEntriesCache.find((e) => e.id === id);
+    if (!entry) return null;
+    const next = { ...entry, verdd_sent_at: Date.now() };
+    if (sourceId) next.verdd_source_id = sourceId;
+    if (targetId) next.verdd_target_id = targetId;
+    if (srcHomo !== null && srcHomo !== undefined && srcHomo !== '') next.src_homo = Number(srcHomo);
+    if (tgtHomo !== null && tgtHomo !== undefined && tgtHomo !== '') next.tgt_homo = Number(tgtHomo);
+    await storageService.addDictionaryEntry(next);
+    await this.refreshCustomEntries();
+    return next;
   }
 
   /**

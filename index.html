@@ -476,6 +476,8 @@
         <h4 style="margin-bottom: 8px; color: var(--primary);">3. Custom User Lexicon (Add & Edit Your Own Glosses)</h4>
         <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
           Add custom lemma-to-gloss translations. These entries take priority over the transducers and persist in your browser.
+          To move them to Ve'rdd, give each a part of speech on both sides, a homonym number where the same word has several entries,
+          and an example sentence with its translation (saved automatically when you gloss a word in a sentence); then press <strong>Send to Ve'rdd…</strong>.
         </p>
 
         <div style="display: flex; gap: 8px; margin-bottom: 8px;">
@@ -483,6 +485,7 @@
           <button id="importDictBtn" class="btn btn-secondary btn-sm">📥 Import TSV / CSV / JSON / Lexc</button>
           <button id="exportDictBtn" class="btn btn-secondary btn-sm">📤 Export Custom TSV</button>
           <button id="exportApertiumBtn" class="btn btn-secondary btn-sm" title="Bilingual dictionary for Apertium: blanks inside a word are written &lt;b/&gt;">📤 Export Apertium .dix</button>
+          <button id="sendCustomToVerddBtn" class="btn btn-primary btn-sm" title="Move the ticked entries (or all that are not in Ve'rdd yet) to the Send tab of the Ve'rdd Workbench">🗂️ Send to Ve'rdd…</button>
         </div>
 
         <p id="customPosHint" style="display: none; font-size: 12px; color: #b45309; margin: 0 0 6px;"></p>
@@ -495,6 +498,8 @@
                 <th>Gloss</th>
                 <th>Gloss POS</th>
                 <th>Lang</th>
+                <th title="Example sentence with its translation: it should contain the word and its gloss">Example</th>
+                <th title="Tick the entries to send to Ve'rdd">Ve'rdd</th>
                 <th>Action</th>
               </tr>
             </thead>

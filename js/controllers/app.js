@@ -20,6 +20,7 @@ import { dependencyService } from '../services/dependency-service.js';
 import { DependencyVisualizer } from '../services/dependency-visualizer.js';
 import { paradigmService } from '../services/paradigm-service.js';
 import { VerddPanel } from './verdd-panel.js';
+import { rowFromCustomEntry, exampleWarnings } from '../services/verdd-api-service.js';
 import { ConlluImportPanel } from './conllu-import-panel.js';
 import { conlluImportService } from '../services/conllu-import-service.js';
 
@@ -212,6 +213,7 @@ export class WorkbenchApp {
         }),
         showToast: (message, type) => this.showToast(message, type),
         confirmAction: (message) => this.confirmAction(message),
+        onRowSent: (row) => this.recordCustomEntrySent(row),
         onStatus: (text, state) => {
           if (!badge) return;
           badge.textContent = text;
@@ -361,6 +363,7 @@ export class WorkbenchApp {
     this.importDictBtn = document.getElementById('importDictBtn');
     this.exportDictBtn = document.getElementById('exportDictBtn');
     this.exportApertiumBtn = document.getElementById('exportApertiumBtn');
+    this.sendCustomToVerddBtn = document.getElementById('sendCustomToVerddBtn');
 
     // Treebank Accumulator Elements
     this.saveTreebankBtn = document.getElementById('saveTreebankBtn');
@@ -530,6 +533,7 @@ export class WorkbenchApp {
     this.importDictBtn.addEventListener('click', () => this.handleImportDictionary());
     this.exportDictBtn.addEventListener('click', () => this.handleExportDictionary());
     this.exportApertiumBtn.addEventListener('click', () => this.handleExportDictionary('apertium'));
+    this.sendCustomToVerddBtn?.addEventListener('click', () => this.sendCustomEntriesToVerdd());
 
     // Treebank Accumulator Events
     this.saveTreebankBtn?.addEventListener('click', () => this.handleSaveCompletedTreebank(false));
@@ -1648,6 +1652,14 @@ export class WorkbenchApp {
         
         // Auto-save to custom dictionary in IndexedDB (splits multiple glosses if comma/semicolon delimited)
         const lemma = activeReading ? activeReading.lemma : tok.form;
+        // the sentence the word stands in, and its translation in the gloss language, go with the entry as its example for Ve'rdd
+        const sentenceText = (this.sentences[sIdx]?.text || '').trim();
+        const translated = (this.translations || []).find((t) => (t.lang || '').toLowerCase() === langVal && (t.text || '').trim());
+        const example = sentenceText ? {
+          ex_src: sentenceText,
+          ex_form: (tok.form || '').trim(),
+          ...(translated ? { ex_tgt: translated.text.trim() } : {})
+        } : {};
         dictionaryService.addCustomEntry({
           src_lang: this.srcLang,
           lemma,
@@ -1655,7 +1667,8 @@ export class WorkbenchApp {
           tgt_pos: tgtPosVal,
           tgt_lang: langVal,
           gloss: val,
-          notes: 'Added from workbench'
+          notes: 'Added from workbench',
+          ...example
         }, { requirePos: true }).then(() => this.renderCustomEntriesTable()).catch((err) => this.showToast(err.message, 'error'));
 
         for (const p of parts) {
@@ -3302,7 +3315,7 @@ export class WorkbenchApp {
       if (emptyHint) emptyHint.style.display = 'none';
       const tr = document.createElement('tr');
       const td = document.createElement('td');
-      td.colSpan = 6;
+      td.colSpan = 8;
       td.style.textAlign = 'center';
       td.style.color = 'var(--text-muted)';
       td.style.padding = '12px';
@@ -3323,10 +3336,32 @@ export class WorkbenchApp {
     entries.forEach(e => {
       const tr = document.createElement('tr');
 
+      // what an entry carries for Ve'rdd: homonym numerals, example sentences; failures show as a toast and a redrawn row
+      const saveDetail = async (fields) => {
+        try {
+          await dictionaryService.updateCustomEntryDetails(e.id, fields);
+        } catch (err) {
+          this.showToast(err.message, 'error');
+        }
+        await this.renderCustomEntriesTable();
+      };
+      const homoInput = (field, title) => {
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        input.step = '1';
+        input.className = 'custom-homo-input';
+        input.placeholder = 'hom.';
+        input.title = title;
+        input.value = e[field] ?? '';
+        input.addEventListener('change', () => saveDetail({ [field]: input.value }));
+        return input;
+      };
+
       const tdLemma = document.createElement('td');
       const strongLemma = document.createElement('strong');
       strongLemma.textContent = e.lemma;
-      tdLemma.appendChild(strongLemma);
+      tdLemma.append(strongLemma, homoInput('src_homo', "Homonym number of the headword in Ve'rdd: 0 or more, to tell apart entries with the same word, language and part of speech. Blank: Ve'rdd decides."));
 
       // part of speech of the source word and of the target gloss: both editable, both required
       const posCell = (field, current, missingTitle, update) => {
@@ -3365,7 +3400,7 @@ export class WorkbenchApp {
       const tdTgtPos = posCell('tgt_pos', e.tgt_pos, 'This entry has no part of speech for the target gloss yet: choose one', (id, v) => dictionaryService.updateCustomEntryTgtPos(id, v));
 
       const tdGloss = document.createElement('td');
-      tdGloss.textContent = e.gloss;
+      tdGloss.append(document.createTextNode(e.gloss), homoInput('tgt_homo', "Homonym number of the gloss in Ve'rdd: 0 or more. Blank: Ve'rdd decides."));
 
       const tdLang = document.createElement('td');
       const langBadge = document.createElement('span');
@@ -3385,9 +3420,68 @@ export class WorkbenchApp {
       });
       tdDel.appendChild(delBtn);
 
-      tr.append(tdLemma, tdPos, tdGloss, tdTgtPos, tdLang, tdDel);
+      // example sentence and its translation; the pair should show the word and its gloss
+      const tdExample = document.createElement('td');
+      const warnings = exampleWarnings(rowFromCustomEntry(e));
+      const exampleInput = (field, placeholder, title) => {
+        const input = document.createElement('input');
+        input.className = 'custom-example-input';
+        input.placeholder = placeholder;
+        input.title = title;
+        input.value = e[field] || '';
+        input.addEventListener('change', () => saveDetail({ [field]: input.value }));
+        return input;
+      };
+      const exSrcInput = exampleInput('ex_src', 'example sentence', `Sentence with "${e.lemma}" (in the language of the headword)`);
+      const exTgtInput = exampleInput('ex_tgt', 'its translation', `The same sentence in ${(e.tgt_lang || 'the gloss language').toUpperCase()}, with "${e.gloss}"`);
+      if (warnings.length) {
+        exSrcInput.classList.toggle('has-warning', warnings.some((w) => w.includes('example sentence')));
+        exTgtInput.classList.toggle('has-warning', warnings.some((w) => w.includes('example translation')));
+        tdExample.title = warnings.join('\n');
+      }
+      tdExample.append(exSrcInput, exTgtInput);
+
+      const tdSend = document.createElement('td');
+      tdSend.style.textAlign = 'center';
+      if (e.verdd_sent_at) {
+        tdSend.textContent = '✓';
+        tdSend.title = `In Ve'rdd since ${new Date(e.verdd_sent_at).toLocaleString()}${e.verdd_source_id ? ` (headword #${e.verdd_source_id}${e.verdd_target_id ? `, gloss #${e.verdd_target_id}` : ''})` : ''}`;
+      } else {
+        const tick = document.createElement('input');
+        tick.type = 'checkbox';
+        tick.dataset.sendId = e.id;
+        tick.title = "Send this entry to Ve'rdd";
+        tdSend.appendChild(tick);
+      }
+
+      tr.append(tdLemma, tdPos, tdGloss, tdTgtPos, tdLang, tdExample, tdSend, tdDel);
       this.customEntriesTableBody.appendChild(tr);
     });
+  }
+
+  /**
+   * Move custom-lexicon entries to the Send tab of the Ve'rdd Workbench: the ticked ones, or every one that is not in Ve'rdd yet.
+   * The Send tab checks them against Ve'rdd (homonyms), shows what is missing and stores them.
+   */
+  sendCustomEntriesToVerdd() {
+    if (!this.verddPanel) return this.showToast("The Ve'rdd Workbench is not available.", 'error');
+    const ticked = new Set([...this.customEntriesTableBody.querySelectorAll('input[data-send-id]:checked')].map((el) => el.dataset.sendId));
+    const pool = dictionaryService.customEntriesCache.filter((e) => !e.verdd_sent_at);
+    const chosen = ticked.size ? pool.filter((e) => ticked.has(e.id)) : pool;
+    if (!chosen.length) return this.showToast("No entries to send: everything is in Ve'rdd already, or the lexicon is empty.", 'info');
+    const rows = chosen.map((e) => rowFromCustomEntry(e, this.verddPanel.posList));
+    const added = this.verddPanel.addCustomRows(rows);
+    document.getElementById('settingsModal')?.classList.remove('open');
+    document.getElementById('verddWorkbenchPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    this.showToast(`${added} entr${added === 1 ? 'y' : 'ies'} in the Ve'rdd Workbench: check them there, then press Send to Ve'rdd.`, 'success');
+  }
+
+  /** A custom-lexicon entry reached Ve'rdd: remember it, with the lexeme ids and the homonym numerals used. */
+  async recordCustomEntrySent(row) {
+    await dictionaryService.markEntrySent(row.entryId, {
+      sourceId: row.sourceId, targetId: row.targetId, srcHomo: row.srcHomoId, tgtHomo: row.tgtHomoId
+    });
+    await this.renderCustomEntriesTable();
   }
 
   async handleAddCustomEntry() {

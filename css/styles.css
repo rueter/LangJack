@@ -1722,6 +1722,10 @@ body {
 
 .vw-problems { margin: 0; padding-left: 18px; font-size: 12px; color: #b91c1c; }
 .vw-ok { font-size: 12px; color: #047857; }
+.vw-warnings { margin: 0; padding-left: 18px; font-size: 12px; color: #b45309; }
+.custom-homo-input { width: 4.2em; padding: 3px 4px; margin-left: 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 11px; background: var(--surface); }
+.custom-example-input { display: block; width: 100%; min-width: 150px; padding: 3px 5px; margin: 1px 0; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; background: var(--surface); }
+.custom-example-input.has-warning { border-color: #f59e0b; background: var(--warning-light); }
 .vw-info { font-size: 12px; color: var(--text-muted); padding: 4px 0; }
 
 .vw-search { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 12px; }

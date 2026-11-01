@@ -7,7 +7,7 @@ import {
   VerddApi, signInToVerdd, describeAccess, VERDD_POS_FALLBACK, POS_UNDETERMINED, describeApiError, ensureOriginPermission, loadVerddConfig,
   normalizeBaseUrl, saveVerddConfig, newRow, draftsFromSentences, blockingReasons, homoState,
   nextHomoId, checkRow, sendRows, rowToPairPayload, validateRow, describeCounts, describeMerge,
-  describeSplit, isUndetermined, tidyHeadword, mergeVerdict, findTwins, describeById, findEditCollision
+  describeSplit, isUndetermined, tidyHeadword, mergeVerdict, findTwins, describeById, findEditCollision, exampleWarnings
 } from '../services/verdd-api-service.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => (
@@ -38,14 +38,16 @@ export class VerddPanel {
    * @param {Function} options.showToast         (message, type) => void
    * @param {Function} options.confirmAction     (message) => boolean
    * @param {Function} [options.onStatus]        (text, state) => void, for the header badge
+   * @param {Function} [options.onRowSent]       (row) => void, after a row that came from the custom lexicon was stored in Ve'rdd
    */
-  constructor({ root, store, getWorkspace, showToast, confirmAction, onStatus = () => {} }) {
+  constructor({ root, store, getWorkspace, showToast, confirmAction, onStatus = () => {}, onRowSent = () => {} }) {
     this.root = root;
     this.store = store;
     this.getWorkspace = getWorkspace;
     this.showToast = showToast;
     this.confirmAction = confirmAction;
     this.onStatus = onStatus;
+    this.onRowSent = onRowSent;
 
     this.api = null;
     this.config = { baseUrl: '', token: '' };
@@ -370,6 +372,8 @@ export class VerddPanel {
     const parts = [];
     const reasons = row.status === 'sent' ? [] : blockingReasons(row, { languages: this.knownLanguageIds() });
     if (reasons.length) parts.push(`<ul class="vw-problems">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>`);
+    const advice = row.status === 'sent' ? [] : exampleWarnings(row);
+    if (advice.length) parts.push(`<ul class="vw-warnings">${advice.map(a => `<li>${esc(a)}</li>`).join('')}</ul>`);
     parts.push(this.matchLine('Headword', row.srcMatches, row.srcHomoId));
     if (row.translation) parts.push(this.matchLine('Translation', row.tgtMatches, row.tgtHomoId));
     if (row.message) {
@@ -401,6 +405,27 @@ export class VerddPanel {
     this.renderCards();
     const undetermined = fresh.filter(r => r.pos === POS_UNDETERMINED).length;
     this.showToast(`Added ${fresh.length} entr${fresh.length === 1 ? 'y' : 'ies'}${undetermined ? `; ${undetermined} with undetermined POS (UND)` : ''}.`, 'success');
+  }
+
+  /**
+   * Take rows built from entries of the custom lexicon into the Send tab and show them. A row that is already there for the
+   * same entry (and not yet sent) is replaced, so pressing the button twice does not duplicate anything.
+   * @returns {number} how many rows were added
+   */
+  addCustomRows(rows) {
+    const entryIds = new Set(rows.map(r => r.entryId));
+    this.rows = this.rows.filter(r => !(r.entryId && entryIds.has(r.entryId) && r.status !== 'sent'));
+    this.rows.push(...rows);
+    this.setTab('send');
+    this.renderCards();
+    return rows.length;
+  }
+
+  /** Tell the owner of the custom lexicon which of its entries have reached Ve'rdd. */
+  announceSent(rows) {
+    rows.filter(r => r.entryId && r.status === 'sent').forEach(row => {
+      try { this.onRowSent(row); } catch (error) { console.warn("Could not record the Ve'rdd result:", error); }
+    });
   }
 
   addBlank() {
@@ -435,6 +460,7 @@ export class VerddPanel {
       const options = { languages: this.knownLanguageIds() };
       const ready = pending.filter(r => blockingReasons(r, options).length === 0);
       const outcome = ready.length ? await sendRows(this.api, ready) : { sent: 0, failed: 0 };
+      this.announceSent(ready);
       pending.forEach(row => this.refreshCard(row));
       this.updateCount();
 

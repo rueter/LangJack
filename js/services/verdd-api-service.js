@@ -6,7 +6,8 @@
  *
  * A "row" is one draft dictionary entry:
  *   { id, srcLang, lemma, pos, srcHomoId, tgtLang, translation, tgtPos, tgtHomoId,
- *     exSrc, exTgt, exSource, guessed, origin, status, message, srcMatches, tgtMatches }
+ *     exSrc, exTgt, exForm, exSource, guessed, origin, entryId, status, message, srcMatches, tgtMatches }
+ * (exForm: the word form as it stands in the example sentence; entryId: the custom-lexicon entry the row came from)
  * Ve'rdd requires every lexeme to have a POS; homoId is only needed to tell homonyms
  * (same lemma, POS and language) apart.
  */
@@ -482,8 +483,8 @@ export function newRow(fields = {}) {
     id: ++rowSequence,
     srcLang: '', lemma: '', pos: '', srcHomoId: null,
     tgtLang: '', translation: '', tgtPos: '', tgtHomoId: null,
-    exSrc: '', exTgt: '', exSource: '',
-    guessed: false, origin: 'manual',
+    exSrc: '', exTgt: '', exForm: '', exSource: '',
+    guessed: false, origin: 'manual', entryId: null,
     status: 'draft', message: '',
     srcMatches: null, tgtMatches: null,
     ...fields
@@ -523,12 +524,70 @@ export function draftsFromSentences(sentences, translations, srcLang, defaultTgt
       rows.push(newRow({
         srcLang: (srcLang || '').toLowerCase(), lemma, pos,
         tgtLang, translation: glossText, tgtPos: tgtPos === POS_UNDETERMINED ? '' : tgtPos,
-        exSrc: sentenceText, exTgt: translated ? translated.text.trim() : '',
+        exSrc: sentenceText, exTgt: translated ? translated.text.trim() : '', exForm: (token.form || '').trim(),
         guessed: Boolean(reading.isGuessed), origin: 'analysis'
       }));
     });
   });
   return rows;
+}
+
+/**
+ * A draft row for an entry of the custom lexicon (Manage models & dictionaries, 3): the headword and its gloss with their
+ * parts of speech, the homonym numerals and the example sentence pair the entry carries.
+ * @param {Object} entry  { id, src_lang, lemma, pos, tgt_lang, gloss, tgt_pos, src_homo, tgt_homo, ex_src, ex_tgt, ex_form }
+ */
+export function rowFromCustomEntry(entry, knownPos = []) {
+  const homo = (value) => (value === null || value === undefined || value === '' ? null : Number(value));
+  // an entry whose part of speech is missing or unknown is not stored as UND: the row asks for one instead
+  const known = (value) => {
+    const mapped = value ? toVerddPos(value, knownPos) : '';
+    return mapped === POS_UNDETERMINED ? '' : mapped;
+  };
+  const pos = known(entry.pos);
+  const tgtPos = known(entry.tgt_pos);
+  return newRow({
+    srcLang: String(entry.src_lang || '').trim().toLowerCase(),
+    lemma: String(entry.lemma || '').trim(),
+    pos,
+    srcHomoId: homo(entry.src_homo),
+    tgtLang: String(entry.tgt_lang || '').trim().toLowerCase(),
+    translation: normalizeGloss(entry.gloss || ''),
+    tgtPos,
+    tgtHomoId: homo(entry.tgt_homo),
+    exSrc: String(entry.ex_src || '').trim(),
+    exTgt: String(entry.ex_tgt || '').trim(),
+    exForm: String(entry.ex_form || '').trim(),
+    origin: 'custom-lexicon',
+    entryId: entry.id
+  });
+}
+
+const foldText = (text) => String(text ?? '').normalize('NFC').toLocaleLowerCase();
+
+/**
+ * Whether the example pair shows the word and its gloss: the example sentence has to contain the headword (or the form it
+ * has in the sentence), the example translation has to contain the translation. These are advice, not blocks: an inflected
+ * form or a free translation may differ from the dictionary form. Returns a list of sentences, empty when nothing is amiss.
+ */
+export function exampleWarnings(row) {
+  const warnings = [];
+  const has = (text) => String(text ?? '').trim() !== '';
+  if (has(row.exSrc)) {
+    const sentence = foldText(row.exSrc);
+    const words = [row.lemma, row.exForm].filter(has).map(foldText);
+    if (words.length && !words.some((w) => sentence.includes(w))) {
+      warnings.push(`The example sentence does not contain the headword${has(row.exForm) ? `s "${row.lemma.trim()}" or "${row.exForm.trim()}"` : ` "${String(row.lemma).trim()}"`}: check that it shows this word.`);
+    }
+  }
+  if (has(row.exTgt) && has(row.translation)) {
+    const sentence = foldText(row.exTgt);
+    const gloss = foldText(row.translation).trim();
+    if (!sentence.includes(gloss)) {
+      warnings.push(`The example translation does not contain the translation "${row.translation.trim()}": check that it shows this gloss.`);
+    }
+  }
+  return warnings;
 }
 
 const isBlank = (value) => !String(value ?? '').trim();
