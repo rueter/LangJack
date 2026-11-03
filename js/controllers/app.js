@@ -20,7 +20,7 @@ import { dependencyService } from '../services/dependency-service.js';
 import { DependencyVisualizer } from '../services/dependency-visualizer.js';
 import { paradigmService } from '../services/paradigm-service.js';
 import { VerddPanel } from './verdd-panel.js';
-import { rowFromCustomEntry, exampleWarnings } from '../services/verdd-api-service.js';
+import { rowFromCustomEntry, exampleWarnings, TRANSLATION_TYPES, TRANSLATION_TYPE, DESCRIPTION_TYPE } from '../services/verdd-api-service.js';
 import { ConlluImportPanel } from './conllu-import-panel.js';
 import { conlluImportService } from '../services/conllu-import-service.js';
 
@@ -3315,7 +3315,7 @@ export class WorkbenchApp {
       if (emptyHint) emptyHint.style.display = 'none';
       const tr = document.createElement('tr');
       const td = document.createElement('td');
-      td.colSpan = 8;
+      td.colSpan = 9;
       td.style.textAlign = 'center';
       td.style.color = 'var(--text-muted)';
       td.style.padding = '12px';
@@ -3402,6 +3402,24 @@ export class WorkbenchApp {
       const tdGloss = document.createElement('td');
       tdGloss.append(document.createTextNode(e.gloss), homoInput('tgt_homo', "Homonym number of the gloss in Ve'rdd: 0 or more. Blank: Ve'rdd decides."));
 
+      // how the gloss relates to the word in Ve'rdd: a translation, or a description (the word explained in several words)
+      const tdType = document.createElement('td');
+      const typePick = document.createElement('select');
+      typePick.className = 'custom-type-select';
+      for (const [value, label] of Object.entries(TRANSLATION_TYPES)) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        typePick.appendChild(opt);
+      }
+      typePick.value = String(Number(e.rel_type) === DESCRIPTION_TYPE ? DESCRIPTION_TYPE : TRANSLATION_TYPE);
+      typePick.title = e.verdd_sent_at
+        ? "Already in Ve'rdd: change the type there (Ve'rdd Workbench, Browse)"
+        : 'Description translation: the word is explained in several words rather than translated word for word';
+      typePick.disabled = Boolean(e.verdd_sent_at);
+      typePick.addEventListener('change', () => saveDetail({ rel_type: typePick.value }));
+      tdType.appendChild(typePick);
+
       const tdLang = document.createElement('td');
       const langBadge = document.createElement('span');
       langBadge.className = 'gloss-lang-badge';
@@ -3454,7 +3472,7 @@ export class WorkbenchApp {
         tdSend.appendChild(tick);
       }
 
-      tr.append(tdLemma, tdPos, tdGloss, tdTgtPos, tdLang, tdExample, tdSend, tdDel);
+      tr.append(tdLemma, tdPos, tdGloss, tdTgtPos, tdType, tdLang, tdExample, tdSend, tdDel);
       this.customEntriesTableBody.appendChild(tr);
     });
   }

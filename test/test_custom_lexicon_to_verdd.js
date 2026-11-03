@@ -66,6 +66,26 @@ assert.strictEqual(stored.tgt_homo, 0, 'the others stay');
 assert.strictEqual(stored.gloss, 'palavra');
 console.log('✓ Homonym numerals and examples are set, validated and cleared');
 
+// --- 3b. Relation type: translation or description ---
+assert.strictEqual(rowFromCustomEntry(entry).relType, 0, 'an entry is a plain translation by default');
+assert.strictEqual(rowToPairPayload(rowFromCustomEntry(entry)).type, undefined);
+const described = rowFromCustomEntry({ ...entry, rel_type: 13 });
+assert.strictEqual(described.relType, 13);
+assert.strictEqual(rowToPairPayload(described).type, 13, 'a description reaches the pair payload as type 13');
+assert.strictEqual(rowFromCustomEntry({ ...entry, rel_type: '13' }).relType, 13, 'the select hands over a string');
+assert.strictEqual(rowFromCustomEntry({ ...entry, rel_type: 6 }).relType, 0, 'only the two translation types exist here');
+await dictionaryService.updateCustomEntryDetails(id, { rel_type: '13' });
+stored = dictionaryService.customEntriesCache.find((e) => e.id === id);
+assert.strictEqual(stored.rel_type, 13);
+assert.strictEqual(rowFromCustomEntry(stored).relType, 13, 'the stored type travels to the Ve\'rdd row');
+assert.strictEqual(stored.tgt_homo, 0, 'the other details stay');
+await assert.rejects(() => dictionaryService.updateCustomEntryDetails(id, { rel_type: '6' }), /Translation or Description translation/);
+await assert.rejects(() => dictionaryService.updateCustomEntryDetails(id, { rel_type: 'x' }), /Translation or Description translation/);
+await dictionaryService.updateCustomEntryDetails(id, { rel_type: '0' });
+stored = dictionaryService.customEntriesCache.find((e) => e.id === id);
+assert(!('rel_type' in stored), 'a plain translation is the default and is not stored');
+console.log('✓ The relation type is stored, validated, and reaches the Ve\'rdd row');
+
 // --- 4. Recording the result ---
 await dictionaryService.markEntrySent(id, { sourceId: 41, targetId: 42, srcHomo: 3, tgtHomo: null });
 stored = dictionaryService.customEntriesCache.find((e) => e.id === id);
