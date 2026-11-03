@@ -19,6 +19,14 @@ export const MAX_POS = 25;
 export const MAX_EXAMPLE = 250;
 export const MAX_BULK_PAIRS = 100;
 
+/**
+ * The two kinds of translation relation Ve'rdd stores (its relation types 0 and 13): a word-for-word translation, or a
+ * description, where one headword is explained in several words. Ve'rdd's pair endpoint accepts only these two.
+ */
+export const TRANSLATION_TYPE = 0;
+export const DESCRIPTION_TYPE = 13;
+export const TRANSLATION_TYPES = { [TRANSLATION_TYPE]: 'Translation', [DESCRIPTION_TYPE]: 'Description translation' };
+
 // Ve'rdd keeps one flat POS value per lexical class (Prop, Aux, Po and Pr stay distinct);
 // the export formats map them (e.g. Prop -> N+Prop / np / PROPN) on their side.
 // UND marks a word whose POS is undetermined. X is reserved in Ve'rdd for words meant
@@ -484,6 +492,7 @@ export function newRow(fields = {}) {
     srcLang: '', lemma: '', pos: '', srcHomoId: null,
     tgtLang: '', translation: '', tgtPos: '', tgtHomoId: null,
     exSrc: '', exTgt: '', exForm: '', exSource: '',
+    relType: TRANSLATION_TYPE,
     guessed: false, origin: 'manual', entryId: null,
     status: 'draft', message: '',
     srcMatches: null, tgtMatches: null,
@@ -558,6 +567,7 @@ export function rowFromCustomEntry(entry, knownPos = []) {
     exSrc: String(entry.ex_src || '').trim(),
     exTgt: String(entry.ex_tgt || '').trim(),
     exForm: String(entry.ex_form || '').trim(),
+    relType: Number(entry.rel_type) === DESCRIPTION_TYPE ? DESCRIPTION_TYPE : TRANSLATION_TYPE,
     origin: 'custom-lexicon',
     entryId: entry.id
   });
@@ -646,6 +656,8 @@ export function rowToPairPayload(row) {
     source: lexeme(row.lemma, row.srcLang, row.pos, row.srcHomoId),
     target: lexeme(row.translation, row.tgtLang, row.tgtPos, row.tgtHomoId)
   };
+  // a plain translation is Ve'rdd's default and is left out
+  if (Number(row.relType) === DESCRIPTION_TYPE) payload.type = DESCRIPTION_TYPE;
   if (!isBlank(row.exSrc)) {
     const example = { source_text: row.exSrc.trim() };
     if (!isBlank(row.exTgt)) example.target_text = row.exTgt.trim();

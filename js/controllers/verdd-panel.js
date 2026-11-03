@@ -7,7 +7,8 @@ import {
   VerddApi, signInToVerdd, describeAccess, VERDD_POS_FALLBACK, POS_UNDETERMINED, describeApiError, ensureOriginPermission, loadVerddConfig,
   normalizeBaseUrl, saveVerddConfig, newRow, draftsFromSentences, blockingReasons, homoState,
   nextHomoId, checkRow, sendRows, rowToPairPayload, validateRow, describeCounts, describeMerge,
-  describeSplit, isUndetermined, tidyHeadword, mergeVerdict, findTwins, describeById, findEditCollision, exampleWarnings
+  describeSplit, isUndetermined, tidyHeadword, mergeVerdict, findTwins, describeById, findEditCollision, exampleWarnings,
+  TRANSLATION_TYPES, TRANSLATION_TYPE, DESCRIPTION_TYPE
 } from '../services/verdd-api-service.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => (
@@ -16,7 +17,6 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => (
 
 const LOOKUP_FIELDS = new Set(['lemma', 'srcLang', 'pos', 'translation', 'tgtLang', 'tgtPos']);
 const HOMO_FIELDS = new Set(['srcHomoId', 'tgtHomoId']);
-const TRANSLATION_TYPES = { 0: 'Translation', 13: 'Description translation' };
 const RELATION_TYPES = {
   ...TRANSLATION_TYPES, 1: 'Etymology', 2: 'Compound', 3: 'Has derivative', 4: 'Has variant', 5: 'Phraseology',
   6: 'Synonym', 7: 'Antonym', 8: 'Hyponymy', 9: 'Hyperonymy', 10: 'Holonymy', 11: 'Meronymy', 12: 'Co-hyponym',
@@ -297,6 +297,14 @@ export class VerddPanel {
     return this.languages.length ? this.languages.map(l => l.id) : null;
   }
 
+  /** Options for the relation-type select: a word-for-word translation, or a description in several words. */
+  typeOptions(current) {
+    const value = Number(current) === DESCRIPTION_TYPE ? DESCRIPTION_TYPE : TRANSLATION_TYPE;
+    return Object.entries(TRANSLATION_TYPES)
+      .map(([type, label]) => `<option value="${type}" ${Number(type) === value ? 'selected' : ''}>${esc(label)}</option>`)
+      .join('');
+  }
+
   cardHtml(row, index) {
     const field = (name, label, extra = '') => `
       <label><span>${label}</span>
@@ -320,6 +328,9 @@ export class VerddPanel {
           ${field('tgtLang', 'Translation language', 'list="vwLangs" autocapitalize="off"')}
           ${field('tgtPos', 'Translation POS', `list="vwPos" placeholder="${esc(row.pos || 'same as headword')}" autocapitalize="off"`)}
           <label><span>Translation homonym</span><span data-slot="tgt-homo" data-row="${row.id}">${this.homoControl(row, 'tgt')}</span></label>
+          <label><span>Relation type</span>
+            <select data-row="${row.id}" data-field="relType" title="Description translation: the headword is explained in several words rather than translated word for word.">${this.typeOptions(row.relType)}</select>
+          </label>
         </div>
         <div class="vw-grid vw-grid-wide">
           ${field('exSrc', 'Example sentence')}
@@ -551,7 +562,7 @@ export class VerddPanel {
         otherCount: outgoing.filter(r => !isTranslation(r)).length,
         allOutgoing: outgoing, allIncoming: incoming, examples,
         twins, notice, mergePreview: null,
-        form: { tgtLang: '', translation: '', tgtPos: '', tgtHomoId: '', exSrc: '', exTgt: '' }
+        form: { tgtLang: '', translation: '', tgtPos: '', tgtHomoId: '', exSrc: '', exTgt: '', relType: TRANSLATION_TYPE }
       };
       this.renderBrowseBody();
       this.view('browse').scrollIntoView({ block: 'start' });
@@ -621,6 +632,7 @@ export class VerddPanel {
           <label>Language <input data-add="tgtLang" list="vwLangs" value="${esc(form.tgtLang)}" autocapitalize="off"></label>
           <label>Translation POS <input data-add="tgtPos" list="vwPos" placeholder="${esc(lexeme.pos)}" value="${esc(form.tgtPos)}" autocapitalize="off"></label>
           <label>Translation homonym <input data-add="tgtHomoId" type="number" min="0" placeholder="auto" value="${esc(form.tgtHomoId)}"></label>
+          <label>Relation type <select data-add="relType">${this.typeOptions(form.relType)}</select></label>
         </div>
         <div class="vw-grid vw-grid-wide">
           <label>Example sentence <input data-add="exSrc" value="${esc(form.exSrc)}"></label>
@@ -652,8 +664,9 @@ export class VerddPanel {
           <button class="btn btn-secondary btn-sm" data-action="open-lexeme" data-id="${to.id}">Open</button>
         </div>
         <div class="vw-example">
+          <select data-rel="type" title="Description translation: the headword is explained in several words rather than translated word for word.">${this.typeOptions(r.type)}</select>
           <input data-rel="notes" value="${esc(r.notes)}" placeholder="notes on this translation">
-          <button class="btn btn-secondary btn-sm" data-action="save-relation" data-id="${r.id}">Save note</button>
+          <button class="btn btn-secondary btn-sm" data-action="save-relation" data-id="${r.id}">Save</button>
           <button class="btn btn-secondary btn-sm vw-danger" data-action="delete-relation" data-id="${r.id}">Delete translation</button>
         </div>
         ${examples}
@@ -711,7 +724,8 @@ export class VerddPanel {
     const row = newRow({
       srcLang: lexeme.language, lemma: lexeme.lexeme, pos: lexeme.pos, srcHomoId: lexeme.homoId,
       tgtLang: v.tgtLang.trim(), translation: v.translation.trim(), tgtPos: v.tgtPos.trim(),
-      tgtHomoId: v.tgtHomoId === '' ? null : Number(v.tgtHomoId), exSrc: v.exSrc.trim(), exTgt: v.exTgt.trim()
+      tgtHomoId: v.tgtHomoId === '' ? null : Number(v.tgtHomoId), exSrc: v.exSrc.trim(), exTgt: v.exTgt.trim(),
+      relType: Number(v.relType)
     });
     if (!row.translation) return this.showToast('Enter the translation.', 'error');
     const problems = validateRow(row, { languages: this.knownLanguageIds() });
@@ -725,10 +739,18 @@ export class VerddPanel {
   }
 
   async saveRelation(id) {
-    const notes = this.view('browse').querySelector(`[data-relation="${id}"] [data-rel="notes"]`).value.trim();
+    const holder = this.view('browse').querySelector(`[data-relation="${id}"]`);
+    const relation = this.browse.detail.relations.find(r => r.id === id);
+    const notes = holder.querySelector('[data-rel="notes"]').value.trim();
+    const type = Number(holder.querySelector('[data-rel="type"]').value);
+    // only what changed is sent: Ve'rdd marks a relation unapproved when its type or notes change
+    const fields = {};
+    if (notes !== (relation.notes || '')) fields.notes = notes;
+    if (type !== relation.type) fields.type = type;
+    if (!Object.keys(fields).length) return this.showToast('Nothing changed.', 'info');
     await this.guard(async () => {
-      await this.api.updateRelation(id, { notes });
-      this.showToast('Translation note saved.', 'success');
+      await this.api.updateRelation(id, fields);
+      this.showToast('type' in fields ? `Saved as ${TRANSLATION_TYPES[type].toLowerCase()}.` : 'Translation note saved.', 'success');
       await this.openLexeme(this.browse.detail.lexeme.id);
     });
   }
@@ -1222,6 +1244,8 @@ export class VerddPanel {
       const row = this.rowFor(el);
       if (!row) return;
       row[el.dataset.field] = el.value === '' ? null : Number(el.value);
+      // a changed choice makes a row that was already sent (or failed) a draft again, as typing does
+      if (row.status === 'sent' || row.status === 'error') { row.status = 'draft'; row.message = ''; }
       this.refreshCard(row);
     } else if (el.dataset.mergeFilter === 'mode') {
       this.merge.mode = el.value;

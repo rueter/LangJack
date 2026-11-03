@@ -12,7 +12,7 @@ import { normalizeLangCode, KNOWN_LANGUAGES } from './analyzer-service.js';
 import { stripGuessTags } from './tag-mapper.js';
 import { formatGloss } from './gloss-format.js';
 import { SpellRelaxService } from './spell-relax-service.js';
-import { VERDD_POS_FALLBACK, POS_UNDETERMINED, toVerddPos } from './verdd-api-service.js';
+import { VERDD_POS_FALLBACK, POS_UNDETERMINED, DESCRIPTION_TYPE, toVerddPos } from './verdd-api-service.js';
 
 export const FST_DICTIONARY_LANGUAGES = {
   vro: 'Võro',
@@ -123,7 +123,7 @@ export function splitGlossItem(rawGloss) {
  * is not a part of speech, it means "not known yet", so it does not count.
  */
 /** The details of a custom entry that go with it to Ve'rdd (see updateCustomEntryDetails). */
-export const CUSTOM_DETAIL_FIELDS = ['src_homo', 'tgt_homo', 'ex_src', 'ex_tgt', 'ex_form'];
+export const CUSTOM_DETAIL_FIELDS = ['src_homo', 'tgt_homo', 'ex_src', 'ex_tgt', 'ex_form', 'rel_type'];
 
 export const CUSTOM_POS_CHOICES = VERDD_POS_FALLBACK.filter((p) => p !== POS_UNDETERMINED);
 
@@ -733,8 +733,9 @@ export class DictionaryService {
 
   /**
    * Sets the details an entry carries for Ve'rdd: the homonym numerals of the headword (src_homo) and of the gloss (tgt_homo)
-   * and the example sentence pair (ex_src with the word as it stands in it, ex_form; ex_tgt with the gloss). A blank value
-   * clears the field; a homonym numeral is 0 or a positive whole number.
+   * and the example sentence pair (ex_src with the word as it stands in it, ex_form; ex_tgt with the gloss), and the relation
+   * type (rel_type: 13 when the gloss describes the word in several words; 0 or blank for a word-for-word translation).
+   * A blank value clears the field; a homonym numeral is 0 or a positive whole number.
    */
   async updateCustomEntryDetails(id, fields) {
     const entry = this.customEntriesCache.find((e) => e.id === id);
@@ -746,6 +747,10 @@ export class DictionaryService {
       if (key === 'src_homo' || key === 'tgt_homo') {
         if (text !== '' && !/^\d+$/.test(text)) throw new Error('A homonym number is 0 or a positive whole number.');
         if (text === '') delete next[key]; else next[key] = Number(text);
+      } else if (key === 'rel_type') {
+        // Ve'rdd's two translation types: 0 (word for word) is the default and is not stored, 13 is a description
+        if (!['', '0', String(DESCRIPTION_TYPE)].includes(text)) throw new Error('A relation type is Translation or Description translation.');
+        if (text === String(DESCRIPTION_TYPE)) next[key] = DESCRIPTION_TYPE; else delete next[key];
       } else if (text === '') {
         delete next[key];
       } else {

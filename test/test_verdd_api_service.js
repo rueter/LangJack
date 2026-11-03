@@ -5,7 +5,7 @@ import {
   homoState, nextHomoId, checkRow, blockingReasons, sendRows,
   loadVerddConfig, saveVerddConfig, describeCounts, describeMerge,
   isUndetermined, tidyHeadword, mergeVerdict, findTwins, describeById, findEditCollision, describeSplit,
-  signInToVerdd, describeAccess
+  signInToVerdd, describeAccess, TRANSLATION_TYPES, TRANSLATION_TYPE, DESCRIPTION_TYPE
 } from '../js/services/verdd-api-service.js';
 
 // A fetch stand-in: routes are matched by "METHOD /path" and may be a value or a function.
@@ -108,6 +108,25 @@ assert.deepStrictEqual(full.target, { lexeme: 'puu', language: 'fin', pos: 'N', 
 assert.deepStrictEqual(full.examples, [{ source_text: 'Muõrr.', target_text: 'Puu.', source: 'https://e.org/p' }]);
 assert.strictEqual(rowToPairPayload({ ...complete, exSrc: 'a', exSource: 'h://' + 'x'.repeat(260) }).examples[0].source, undefined);
 console.log('✓ payload');
+
+console.log('=== 5b. Relation type: translation or description ===');
+assert.deepStrictEqual(TRANSLATION_TYPES, { 0: 'Translation', 13: 'Description translation' });
+assert.strictEqual(newRow().relType, TRANSLATION_TYPE, 'a new row is a plain translation');
+assert.strictEqual(rowToPairPayload({ ...complete, relType: TRANSLATION_TYPE }).type, undefined, 'a translation is the default and is not sent');
+assert.strictEqual(rowToPairPayload({ ...complete, relType: DESCRIPTION_TYPE }).type, 13);
+assert.strictEqual(rowToPairPayload({ ...complete, relType: '13' }).type, 13, 'the select hands over a string');
+assert.strictEqual(rowToPairPayload({ ...complete, relType: 6 }).type, undefined, 'only the two translation types are ever sent');
+{
+  const { api, calls } = apiWith({
+    'POST /verdd/api/v1/pairs/bulk/': () => ({ body: { results: [{ ok: true, created: true, source: { id: 1 }, target: { id: 2 }, examples: [] }] } }),
+    'PATCH /verdd/api/v1/relations/7/': { body: { id: 7, type: 13 } }
+  });
+  await api.sendPairs([rowToPairPayload({ ...complete, relType: DESCRIPTION_TYPE })]);
+  assert.strictEqual(calls[0].body.pairs[0].type, 13, 'the description type reaches the bulk endpoint');
+  await api.updateRelation(7, { type: DESCRIPTION_TYPE });
+  assert.deepStrictEqual([calls[1].method, calls[1].body], ['PATCH', { type: 13 }], 'an existing translation can be changed to a description');
+}
+console.log('✓ relation type');
 
 console.log('=== 6. Homonym states ===');
 const one = [{ id: 1, homoId: 0 }];
