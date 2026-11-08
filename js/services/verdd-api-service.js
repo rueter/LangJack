@@ -576,6 +576,56 @@ export function rowFromCustomEntry(entry, knownPos = []) {
 const foldText = (text) => String(text ?? '').normalize('NFC').toLocaleLowerCase();
 
 /**
+ * Complete the example of a custom-lexicon entry from the sentences it may have been glossed in (the workspace, the
+ * treebank): an entry without an example takes the first sentence where a word with its lemma carries its gloss, preferring
+ * one with a translation in the gloss language; an entry with a sentence but no translation takes the translation from the
+ * same sentence. The entry is returned as it is when nothing fits; it is never changed in place.
+ * @param {Object} entry  a custom entry (see rowFromCustomEntry)
+ * @param {Array<Object>} sources  [{ text, tokens, translations: [{ lang, text }], srcLang }]
+ */
+export function withSentenceExample(entry, sources = []) {
+  const has = (text) => String(text ?? '').trim() !== '';
+  const lemma = foldText(entry.lemma).trim();
+  const gloss = foldText(normalizeGloss(entry.gloss || '')).trim();
+  const tgtLang = foldText(entry.tgt_lang).trim();
+  const srcLang = foldText(entry.src_lang).trim();
+  const usable = (sources || []).filter((s) => has(s?.text) && (!srcLang || !has(s.srcLang) || foldText(s.srcLang).trim() === srcLang));
+  const translationOf = (source) => {
+    const found = (source.translations || []).find((t) => foldText(t.lang).trim() === tgtLang && has(t.text));
+    return found ? found.text.trim() : '';
+  };
+
+  if (has(entry.ex_src)) {
+    if (has(entry.ex_tgt)) return entry;
+    const text = foldText(entry.ex_src).trim();
+    const translated = usable.map((s) => (foldText(s.text).trim() === text ? translationOf(s) : '')).find(has);
+    return translated ? { ...entry, ex_tgt: translated } : entry;
+  }
+  if (!lemma || !gloss) return entry;
+
+  // a word of the sentence that has the entry's lemma and, in the entry's language, its gloss
+  const glossedHere = (token) => {
+    if (!token || token.isPunct) return false;
+    const lemmas = [token.lemma, token.customReading?.lemma, token.selectedReading?.lemma, token.form].filter(has).map((l) => foldText(l).trim());
+    if (!lemmas.includes(lemma)) return false;
+    const glosses = [
+      { gloss: token.customGloss, lang: token.customGlossLang },
+      token.selectedGloss,
+      ...(token.allGlosses || []).filter((g) => g.source === 'custom_user')
+    ].filter((g) => g && has(g.gloss) && (!has(g.lang) || !tgtLang || foldText(g.lang).trim() === tgtLang));
+    return glosses.some((g) => foldText(normalizeGloss(g.gloss)).trim() === gloss);
+  };
+  const found = [];
+  for (const source of usable) {
+    const token = (source.tokens || []).find(glossedHere);
+    if (token) found.push({ text: source.text.trim(), form: String(token.form || '').trim(), translation: translationOf(source) });
+  }
+  const best = found.find((f) => f.translation) || found[0];
+  if (!best) return entry;
+  return { ...entry, ex_src: best.text, ...(best.form ? { ex_form: best.form } : {}), ...(best.translation ? { ex_tgt: best.translation } : {}) };
+}
+
+/**
  * Whether the example pair shows the word and its gloss: the example sentence has to contain the headword (or the form it
  * has in the sentence), the example translation has to contain the translation. These are advice, not blocks: an inflected
  * form or a free translation may differ from the dictionary form. Returns a list of sentences, empty when nothing is amiss.
