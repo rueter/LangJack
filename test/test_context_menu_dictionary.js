@@ -513,6 +513,31 @@ assert.strictEqual(detectLanguageForWord('lək̓ʷšid', 'lut'), 'slh', 'Precomp
 assert.strictEqual(detectLanguageForWord('ǰəsəd'), 'lut', 'Precomposed «ǰ» word is Lushootseed');
 console.log('✓ Lushootseed (lut) and Southern Lushootseed (slh) correctly recognized and separated');
 
+// 10d-3. Võro (vro) vs Skolt Sámi (sms): «õ» is shared; Võro has «-q», «'», C + acute, «ü», «õ» after the first syllable
+console.log('\n--- 10d-3. Testing Võro (vro) and Skolt Sámi (sms) separation ---');
+// The Little Prince in Võro: "Ma pallõ latsi käest andis, et pühändi seo raamadu ütele suurõlõ inemisele."
+for (const w of ['pallõ', 'pühändi', 'ütele', 'suurõlõ']) {
+  assert.strictEqual(detectLanguageForWord(w, 'sms'), 'vro', `«${w}» must be Võro even with default sms`);
+}
+for (const w of ['latsi', 'käest', 'raamadu', 'inemisele']) {
+  assert.strictEqual(detectLanguageForWord(w, 'vro'), 'vro', `Unmarked «${w}» keeps default vro`);
+}
+assert.strictEqual(detectLanguageForWord('latsiq', 'sms'), 'vro', 'Word-final «q» is Võro');
+assert.strictEqual(detectLanguageForWord("latsi'", 'sms'), 'vro', '«\'» after a vowel (for q) is Võro');
+assert.strictEqual(detectLanguageForWord("pall'oq", 'sms'), 'vro', '«\'» after a consonant (palatalization) is Võro');
+assert.strictEqual(detectLanguageForWord('vaśk', 'sms'), 'vro', 'Precomposed «ś» is Võro');
+assert.strictEqual(detectLanguageForWord('t́ura', 'sms'), 'vro', 'Consonant + U+0301 from the vro keyboard is Võro');
+// Skolt Sámi keeps «ʹ ʼ ǩ ǧ ǥ å» and its non-initial «õõ, uõ»
+assert.strictEqual(detectLanguageForWord('kuuʹǩǩ', 'vro'), 'sms', '«ʹ» and «ǩ» are Skolt Sámi');
+assert.strictEqual(detectLanguageForWord('jällmõõžž', 'sms'), 'sms', 'Non-initial «õõ» is not Võro evidence');
+assert.strictEqual(detectLanguageForWord('tuõttvuõtt', 'sms'), 'sms', '«uõ» is not Võro evidence');
+// Estonian: «ü» alone and compound «õ» stay Estonian with an Estonian default
+assert.strictEqual(detectLanguageForWord('ütles', 'est'), 'est', '«ü» alone keeps default est');
+assert.strictEqual(detectLanguageForWord('seetõttu', 'est'), 'est', 'Estonian compound «õ» keeps default est');
+// Finnish is unaffected
+assert.strictEqual(detectLanguageForWord('päivää'), 'fin', 'Finnish «ä…ä» stays Finnish');
+console.log('✓ Võro (vro) separated from Skolt Sámi (sms), Estonian (est) and Finnish (fin)');
+
 // 10e. Testing Komi-Permyak (koi) In-Page Dictionary Resolution («мунісӧ»)
 console.log('\n--- 10e. Testing Komi-Permyak (koi) In-Page Dictionary Card Resolution («мунісӧ») ---');
 assert.strictEqual(detectLanguageForWord('мунісӧ', 'koi'), 'koi', 'Detecting language for "мунісӧ" with default "koi" must return "koi"');

@@ -185,4 +185,21 @@ const verdd = VerddExporter.exportBlock([testSentence], [], 'vro', 'eng');
 assert(verdd.includes('+SplRlx'), 'Ve\'rdd export must retain +SplRlx');
 console.log('✓ Ve\'rdd export retains +SplRlx in MORPH field');
 
+// =========================================================================
+// Stress marks (U+0301) on Cyrillic dictionary forms
+// =========================================================================
+console.log('\n--- Testing stress-mark removal for myv, mdf, udm, koi, kpv, mhr, mrj ---');
+for (const lang of ['myv', 'mdf', 'udm', 'koi', 'kpv', 'mhr', 'mrj']) {
+  assert.strictEqual(SpellRelaxService.stripStressMarks('ву́ко', lang), 'вуко', `U+0301 must be removed in ${lang}`);
+}
+assert.strictEqual(SpellRelaxService.stripStressMarks('ӧ́ти', 'kpv'), 'ӧти', 'Letters with diaeresis stay intact');
+assert.strictEqual(SpellRelaxService.stripStressMarks('t́', 'vro'), 't́', 'In vro U+0301 marks palatalization and is kept');
+assert.strictEqual(SpellRelaxService.stripStressMarks('кудо́', 'rus'), 'кудо́', 'Other languages are unchanged');
+
+await analyzerService.ensureModelForLanguage('koi');
+const stressedReadings = analyzerService.analyze_word('му́нісӧ', 'koi');
+assert(stressedReadings.length > 0 && stressedReadings[0].lemma === 'мунны', 'Stressed koi «му́нісӧ» must be analysed as мунны');
+assert(!stressedReadings[0].isSplRlx, 'A stress mark is not a spelling error: no +SplRlx');
+console.log('✓ Stressed dictionary form «му́нісӧ» analysed as «мунны» without +SplRlx');
+
 console.log('\n🎉 ALL SPELL RELAX, +SplRlx, AND CorrectForm=X TESTS PASSED! 🎉\n');
