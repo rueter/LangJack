@@ -20,7 +20,7 @@ import { dependencyService } from '../services/dependency-service.js';
 import { DependencyVisualizer } from '../services/dependency-visualizer.js';
 import { paradigmService } from '../services/paradigm-service.js';
 import { VerddPanel } from './verdd-panel.js';
-import { rowFromCustomEntry, exampleWarnings, TRANSLATION_TYPES, TRANSLATION_TYPE, DESCRIPTION_TYPE } from '../services/verdd-api-service.js';
+import { rowFromCustomEntry, withSentenceExample, exampleWarnings, TRANSLATION_TYPES, TRANSLATION_TYPE, DESCRIPTION_TYPE } from '../services/verdd-api-service.js';
 import { ConlluImportPanel } from './conllu-import-panel.js';
 import { conlluImportService } from '../services/conllu-import-service.js';
 
@@ -3427,6 +3427,19 @@ export class WorkbenchApp {
       tdLang.appendChild(langBadge);
 
       const tdDel = document.createElement('td');
+      tdDel.style.whiteSpace = 'nowrap';
+      // this one entry to the Send tab of the Ve'rdd Workbench, where it is checked and sent
+      const toVerddBtn = document.createElement('button');
+      toVerddBtn.className = 'btn-remove btn-sm btn-to-verdd';
+      toVerddBtn.dataset.verddId = e.id;
+      toVerddBtn.textContent = '🗂️';
+      toVerddBtn.disabled = Boolean(e.verdd_sent_at);
+      toVerddBtn.title = e.verdd_sent_at
+        ? "Already in Ve'rdd"
+        : "Move this entry, with its example sentence and translation, to the Ve'rdd Workbench (4) to check and send it";
+      toVerddBtn.addEventListener('click', () => this.moveCustomEntriesToVerdd([e]));
+      tdDel.appendChild(toVerddBtn);
+
       const delBtn = document.createElement('button');
       delBtn.className = 'btn-remove btn-sm';
       delBtn.title = 'Delete entry';
@@ -3487,11 +3500,27 @@ export class WorkbenchApp {
     const pool = dictionaryService.customEntriesCache.filter((e) => !e.verdd_sent_at);
     const chosen = ticked.size ? pool.filter((e) => ticked.has(e.id)) : pool;
     if (!chosen.length) return this.showToast("No entries to send: everything is in Ve'rdd already, or the lexicon is empty.", 'info');
-    const rows = chosen.map((e) => rowFromCustomEntry(e, this.verddPanel.posList));
+    this.moveCustomEntriesToVerdd(chosen);
+  }
+
+  /** The sentences an entry may have been glossed in: the workspace (with its translations) and the saved treebank. */
+  exampleSources() {
+    const workspace = (this.sentences || []).map((s) => ({ text: s.text, tokens: s.tokens, translations: this.translations, srcLang: this.srcLang }));
+    return [...workspace, ...treebankService.getTreebanks()];
+  }
+
+  /**
+   * Put custom-lexicon entries into the Send tab of the Ve'rdd Workbench as draft rows, with the example sentence pair each
+   * carries (completed from the workspace or the treebank where it lacks one). Nothing is sent: that is done in the workbench.
+   */
+  moveCustomEntriesToVerdd(entries) {
+    if (!this.verddPanel) return this.showToast("The Ve'rdd Workbench is not available.", 'error');
+    const sources = this.exampleSources();
+    const rows = entries.map((e) => rowFromCustomEntry(withSentenceExample(e, sources), this.verddPanel.posList));
     const added = this.verddPanel.addCustomRows(rows);
     document.getElementById('settingsModal')?.classList.remove('open');
     document.getElementById('verddWorkbenchPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    this.showToast(`${added} entr${added === 1 ? 'y' : 'ies'} in the Ve'rdd Workbench: check them there, then press Send to Ve'rdd.`, 'success');
+    this.showToast(`${added} entr${added === 1 ? 'y' : 'ies'} in the Ve'rdd Workbench: check ${added === 1 ? 'it' : 'them'} there, then press Send to Ve'rdd.`, 'success');
   }
 
   /** A custom-lexicon entry reached Ve'rdd: remember it, with the lexeme ids and the homonym numerals used. */

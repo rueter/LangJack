@@ -6,11 +6,13 @@
  * 2. The example check: the sentence has to show the headword (or its form in the sentence), the translation the gloss.
  * 3. Homonym numerals and examples can be set on, and cleared from, a stored entry; bad numerals are refused.
  * 4. Recording that an entry reached Ve'rdd keeps the lexeme ids and the homonym numerals used.
+ * 5. An entry moved on its own (the 🗂️ next to the trashcan) takes a missing example from the sentence it was glossed in,
+ *    in the workspace or the treebank, with that sentence's translation in the gloss language.
  */
 
 import assert from 'node:assert';
 import { dictionaryService } from '../js/services/dictionary-service.js';
-import { rowFromCustomEntry, rowToPairPayload, exampleWarnings, validateRow, blockingReasons } from '../js/services/verdd-api-service.js';
+import { rowFromCustomEntry, withSentenceExample, rowToPairPayload, exampleWarnings, validateRow, blockingReasons } from '../js/services/verdd-api-service.js';
 
 console.log("=== Running Tests for Custom Lexicon -> Ve'rdd ===\n");
 
@@ -94,5 +96,40 @@ assert.deepStrictEqual([stored.verdd_source_id, stored.verdd_target_id, stored.s
 assert.strictEqual(await dictionaryService.markEntrySent('missing', {}), null);
 await dictionaryService.deleteCustomEntry(id);
 console.log("✓ An entry that reached Ve'rdd remembers when, which lexemes, and the homonyms used");
+
+// --- 5. The example from the sentence the entry was glossed in ---
+const glossedToken = { form: 'Aikuru', lemma: 'aiku', customGloss: 'casa', customGlossLang: 'por', selectedGloss: { gloss: 'casa', lang: 'por', source: 'custom_user' } };
+const workspace = [
+  { text: 'Nuku wa', tokens: [{ form: 'Nuku', lemma: 'nuku', selectedGloss: { gloss: 'casa', lang: 'por' } }], translations: [{ lang: 'por', text: 'Nada' }], srcLang: 'apu' },
+  { text: 'Aikuru wa.', tokens: [glossedToken, { form: '.', isPunct: true }], translations: [{ lang: 'eng', text: 'My house.' }, { lang: 'por', text: 'A minha casa.' }], srcLang: 'apu' }
+];
+const bare = { id: 'e5', src_lang: 'apu', lemma: 'aiku', pos: 'N', tgt_lang: 'por', gloss: 'casa', tgt_pos: 'N' };
+const completed = withSentenceExample(bare, workspace);
+assert.deepStrictEqual([completed.ex_src, completed.ex_form, completed.ex_tgt], ['Aikuru wa.', 'Aikuru', 'A minha casa.'], 'the sentence, the word as it stands there, the translation in the gloss language');
+assert(!('ex_src' in bare), 'the stored entry is not changed');
+const moved = rowFromCustomEntry(completed);
+assert.deepStrictEqual([moved.lemma, moved.translation, moved.tgtLang, moved.exSrc, moved.exTgt], ['aiku', 'casa', 'por', 'Aikuru wa.', 'A minha casa.']);
+assert.deepStrictEqual(validateRow(moved), [], 'the moved row passes the Send tab checks');
+assert.deepStrictEqual(blockingReasons(moved), []);
+assert.deepStrictEqual(exampleWarnings(moved), [], 'the sentence shows the word, its translation the gloss');
+assert.deepStrictEqual(rowToPairPayload(moved).examples, [{ source_text: 'Aikuru wa.', target_text: 'A minha casa.' }]);
+// a sentence with a translation wins over an earlier one without
+const untranslated = { ...workspace[1], text: 'Aiku!', translations: [] };
+assert.strictEqual(withSentenceExample(bare, [untranslated, workspace[1]]).ex_src, 'Aikuru wa.');
+assert.deepStrictEqual([withSentenceExample(bare, [untranslated]).ex_src, withSentenceExample(bare, [untranslated]).ex_tgt], ['Aiku!', undefined], 'without a translation, the sentence alone');
+// a treebank record (text, tokens, translations) serves the same way; a gloss kept in allGlosses counts too
+const treebankRecord = { text: 'Aiku apa', srcLang: 'apu', tokens: [{ form: 'Aiku', selectedReading: { lemma: 'aiku' }, allGlosses: [{ gloss: 'lar', lang: 'por', source: 'custom_user' }] }], translations: [{ lang: 'por', text: 'Meu lar' }] };
+assert.strictEqual(withSentenceExample({ ...bare, gloss: 'lar' }, [treebankRecord]).ex_tgt, 'Meu lar');
+// nothing fits: another gloss, another gloss language, another source language, no sources
+assert(!('ex_src' in withSentenceExample({ ...bare, gloss: 'teto' }, workspace)), 'a word glossed otherwise is not an example');
+assert(!('ex_src' in withSentenceExample({ ...bare, tgt_lang: 'spa' }, workspace)), 'the gloss has to be in the entry language');
+assert(!('ex_src' in withSentenceExample({ ...bare, src_lang: 'koi' }, workspace)), 'a sentence in another language is not an example');
+assert.strictEqual(withSentenceExample(bare), bare);
+// an entry with its own example keeps it; only a missing translation of that same sentence is filled in
+assert.strictEqual(withSentenceExample(entry, workspace), entry, 'a complete example is left alone');
+const noTranslation = withSentenceExample({ ...bare, ex_src: ' Aikuru wa. ', ex_form: 'Aikuru' }, workspace);
+assert.deepStrictEqual([noTranslation.ex_src, noTranslation.ex_tgt], [' Aikuru wa. ', 'A minha casa.']);
+assert(!('ex_tgt' in withSentenceExample({ ...bare, ex_src: 'Aiku apa' }, workspace)), 'no translation of another sentence');
+console.log('✓ An entry moved on its own takes its example and translation from the workspace or the treebank');
 
 console.log("\nAll custom lexicon -> Ve'rdd tests passed.");
