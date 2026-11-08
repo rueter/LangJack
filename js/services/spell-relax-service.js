@@ -172,7 +172,25 @@ export const SPELL_RELAX_RULES = {
   ]
 };
 
+// Dictionaries mark stress with U+0301 COMBINING ACUTE ACCENT on Cyrillic vowels (especially udm, where stress
+// cannot always be predicted). Stress is not a spelling error, and most analysers do not accept it, so it is
+// removed before lookup without tagging the reading +SplRlx.
+export const STRESS_MARK_LANGS = new Set(['myv', 'mdf', 'udm', 'koi', 'kpv', 'mhr', 'mrj']);
+
 export class SpellRelaxService {
+  /**
+   * Removes stress marks (U+0301) from a word in a language that writes stress in dictionaries.
+   * E.g. "ву́ко" in udm -> "вуко"; other languages are returned unchanged (in vro U+0301 marks palatalization).
+   * @param {string} word
+   * @param {string} lang
+   * @returns {string}
+   */
+  static stripStressMarks(word, lang) {
+    if (!word || typeof word !== 'string' || !lang) return word || '';
+    if (!STRESS_MARK_LANGS.has(lang.trim().toLowerCase())) return word;
+    return word.replace(/́/g, '');
+  }
+
   /**
    * Retrieves the rules list for the given language.
    * @param {string} lang

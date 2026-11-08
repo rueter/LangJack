@@ -657,6 +657,17 @@ export class AnalyzerService {
               rawResults = [...(rawResults || []), ...canonRes];
           }
         }
+
+        // 5. Try the word without stress marks (dictionary forms such as udm "ву́ко")
+        if (!rawResults || rawResults.length === 0) {
+          const unstressed = SpellRelaxService.stripStressMarks(cleanWord, lang);
+          if (unstressed !== cleanWord) {
+            rawResults = hfst.lookup(unstressed);
+            if ((!rawResults || rawResults.length === 0) && unstressed !== unstressed.toLowerCase()) {
+              rawResults = hfst.lookup(unstressed.toLowerCase());
+            }
+          }
+        }
       } catch (err) {
         console.warn(`HFST lookup error for "${cleanWord}":`, err);
       }
