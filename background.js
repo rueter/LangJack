@@ -56,9 +56,16 @@ export function detectLanguageForWord(word, defaultLang = 'myv') {
     return detectLushootseedVariety(clean, defaultLang);
   }
 
-  // 1. Skolt Sámi specific characters (ǥ, ǧ, ǩ, õ, ǯ, ʒ, å, ʹ, ˈ, ẹ)
-  if (/[ǩõǧǯʒʼåʹǥˈẹ]/i.test(clean) || /^[kK]åʹll/i.test(clean)) {
+  // 1. Skolt Sámi specific characters (ǥ, ǧ, ǩ, ǯ, ʒ, å, ʹ, ʼ, ˈ, ẹ), all precomposed on the sms keyboard;
+  //    «õ» is shared with Võro
+  if (/[ǩǧǯʒʼåʹǥˈẹ]/i.test(clean) || /^[kK]åʹll/i.test(clean)) {
     return 'sms';
+  }
+
+  // 1b. Võro (vro) – before Apurinã («ts» in latsi) and the Finnish «ä…ä» rule (pühändi)
+  const voro = detectVoroWord(clean, defaultLang);
+  if (voro) {
+    return voro;
   }
 
   // 2. Apurinã specific patterns
@@ -104,6 +111,40 @@ export function detectLanguageForWord(word, defaultLang = 'myv') {
   }
 
   return defaultLang || 'myv';
+}
+
+/**
+ * Võro (vro) evidence, measured on Võro Wikipedia against UD Estonian, UD Skolt Sámi and UD Finnish:
+ * - word-final «q» (latsiq), or «'»/«’» after a letter: palatalization after a consonant (pall'oq, oll'), the
+ *   glottal stop for «q» after a vowel (latsi'); Skolt Sámi writes «ʹ» and «ʼ» instead, never «'» or «’»
+ * - a Latin consonant with acute: «ś ń ŕ» or b́ d́ t́ ... typed with U+0301 on the vro keyboard
+ * - a single «õ» after the first syllable (pallõ, suurõlõ); Skolt Sámi has «õõ, uõ, iõ» there, and in Estonian
+ *   «õ» stays in the first syllable of each compound member (seetõttu), so the rule is off with an Estonian default
+ * - «ü», which Estonian also has: with an Estonian default it stays Estonian
+ * - with a vro or est default: a front-harmonic polysyllable ending in «-ä» (Finnish has these too), and any
+ *   word spelled in the Võro alphabet keeps a vro default
+ * Words with the general Sámi letters «č đ ŋ â» are left to the Sámi rules. Returns 'vro', 'est' or null.
+ */
+export function detectVoroWord(word, defaultLang = null) {
+  if (!word || typeof word !== 'string' || /[Ѐ-ӿ]/.test(word)) return null;
+  const nfc = word.normalize('NFC').toLowerCase();
+  if (/[čđŋâ]/.test(nfc)) return null;
+
+  if (/q$/.test(nfc)) return 'vro';
+  if (/[\p{L}\p{M}]['’]/u.test(nfc) && !/['’](s|t|d|ll|re|ve|m)$/.test(nfc)) return 'vro';
+  if (/[bcdfghklmnprstvz]́/.test(nfc.normalize('NFD'))) return 'vro';
+  // single «õ» after the first syllable; Skolt Sámi has «õõ» (jällmõõžž) and «uõ, iõ» there, Estonian compounds «õ»
+  if (defaultLang !== 'est' && /^[^aeiouõäöüy]*[aeiouõäöüy]+[^aeiouõäöüy]+.*(^|[^uiõ])õ(?!õ)/.test(nfc)) return 'vro';
+  if (/ü/.test(nfc)) return defaultLang === 'est' ? 'est' : 'vro';
+
+  if (defaultLang === 'vro' || defaultLang === 'est') {
+    if (/^[^aeiouõäöüy]*[aeiouõäöüy]+[^aeiouõäöüy]+.*ä$/.test(nfc) && !/[aouõ]/.test(nfc)) return 'vro';
+  }
+  // Võro alphabet in NFD: Latin letters with acute, tilde (õ), diaeresis (ä ö ü) or caron (š ž)
+  if (defaultLang === 'vro' && /^[a-z'’́̃̈̌-]+$/.test(nfc.normalize('NFD'))) {
+    return 'vro';
+  }
+  return null;
 }
 
 /**
@@ -181,14 +222,14 @@ export async function analyzeWordWithLanguageAssurance(word, preferredLang = 'my
 
   // 3. Priority #3 (Fallback Candidate Search): Test other supported languages
   // Lushootseed models are only tried for words carrying Lushootseed letters
-  const candidateLangs = (isLushootseedWord(cleanWord) ? ['lut', 'slh'] : ['sms', 'myv', 'fin', 'kpv', 'koi', 'apu', 'sme', 'smn', 'mdf', 'udm', 'olo'])
+  const candidateLangs = (isLushootseedWord(cleanWord) ? ['lut', 'slh'] : ['sms', 'vro', 'myv', 'fin', 'kpv', 'koi', 'apu', 'sme', 'smn', 'mdf', 'udm', 'olo'])
     .filter(l => l !== primaryLang && l !== detectedLang);
 
   const isCyr = /[\u0400-\u04FF]/.test(cleanWord);
 
   for (const cand of candidateLangs) {
     const candIsCyr = ['myv', 'mdf', 'kpv', 'koi', 'udm', 'sjd'].includes(cand);
-    if (isCyr !== candIsCyr && !['sms', 'sme', 'smn', 'fin', 'apu', 'olo'].includes(cand)) {
+    if (isCyr !== candIsCyr && !['sms', 'vro', 'sme', 'smn', 'fin', 'apu', 'olo'].includes(cand)) {
       continue;
     }
 
