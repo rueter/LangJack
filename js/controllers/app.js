@@ -353,6 +353,7 @@ export class WorkbenchApp {
     this.settingsModal = document.getElementById('settingsModal');
     this.openSettingsBtn = document.getElementById('openSettingsBtn');
     this.closeSettingsBtn = document.getElementById('closeSettingsBtn');
+    this.closeSettingsFooterBtn = document.getElementById('closeSettingsFooterBtn');
 
     // UralicNLP renewal button in top corner
     this.renewUralicModelsTopBtn = document.getElementById('renewUralicModelsTopBtn');
@@ -493,6 +494,7 @@ export class WorkbenchApp {
     // Settings Modal
     this.openSettingsBtn.addEventListener('click', () => this.openModal());
     this.closeSettingsBtn.addEventListener('click', () => this.closeModal());
+    this.closeSettingsFooterBtn?.addEventListener('click', () => this.closeModal());
     this.settingsModal.addEventListener('click', (e) => {
       if (e.target === this.settingsModal) this.closeModal();
     });
