@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import {
-  firstLetter, parseInitials, matchesInitials, bulkTarget, bulkPlan, scanCapitalisedNouns, runBulkMerge, runBulkConvert, VerddApiError
+  firstLetter, parseInitials, matchesInitials, bulkTarget, bulkPlan, describeInitials, describeCounts, scanCapitalisedByPos, scanCapitalisedNouns, runBulkMerge, runBulkConvert, VerddApiError
 } from '../js/services/verdd-api-service.js';
 
 console.log('=== Bulk merge of capitalised nouns into their Prop twins ===\n');
@@ -14,6 +14,15 @@ assert.strictEqual(matchesInitials('алёша', parseInitials('А')), true, 'ca
 assert.strictEqual(matchesInitials('Борис', parseInitials('А')), false);
 assert.strictEqual(matchesInitials('Борис', parseInitials('')), true, 'no letters: every headword');
 assert.strictEqual(matchesInitials('(Алёша)', parseInitials('А')), true, 'punctuation before the first letter is skipped');
+
+// letters are told apart by Unicode value; U+ code points work too
+assert.strictEqual(matchesInitials('Abraam', parseInitials('А')), false, 'Latin A is not Cyrillic А');
+assert.strictEqual(matchesInitials('Абраам', parseInitials('A')), false, 'nor the other way round');
+assert.deepStrictEqual([...parseInitials('U+0410 б')], ['а', 'б']);
+assert.deepStrictEqual([...parseInitials('U+0031')], [], 'a code point that is not a letter counts for nothing');
+assert.strictEqual(describeInitials('А б'), 'А = U+0410, Б = U+0411');
+assert.strictEqual(describeInitials('A'), 'A = U+0041');
+assert.strictEqual(describeCounts(null), '');
 
 const e = (id, lexeme, pos = 'N') => ({ id, lexeme, language: 'myv', pos, homoId: 0, counts: {}, translations: [] });
 const group = (entry, ...candidates) => ({ entry, candidates });
@@ -59,6 +68,27 @@ assert.strictEqual(scan.complete, false, 'stopped early');
 assert.deepStrictEqual(scan.groups.map(g => g.entry.lexeme), ['Алёша', 'Анна']);
 scan = await scanCapitalisedNouns(api, { language: 'myv', pageSize: 100 });
 assert.strictEqual(scan.groups.length, 5, 'no letters: everything');
+
+// a source POS other than N: list that POS and find the twins of each capitalised entry
+const lex = (id, lexeme, pos) => ({ id, lexeme, language: 'myv', pos, homoId: 0, checked: false });
+const store = [lex(1, 'Абраам', 'A'), lex(2, 'Борис', 'A'), lex(3, 'сухо', 'A'), lex(4, 'Алёша', 'A'), lex(5, 'Абраам', 'Prop'), lex(6, 'алёша', 'A')];
+const calls2 = [];
+const posApi = {
+  async searchLexemes({ language, pos, limit, offset }) {
+    calls2.push(['search', language, pos, limit, offset]);
+    const rows = store.filter(l => l.pos === pos);
+    return { total: rows.length, results: rows.slice(offset, offset + limit) };
+  },
+  async findLexemes({ language, lexeme }) { calls2.push(['find', lexeme]); return store.filter(l => l.lexeme === lexeme); }
+};
+const byPos = await scanCapitalisedByPos(posApi, { language: 'myv', pos: 'A', initials: parseInitials('А'), pageSize: 2 });
+assert.deepStrictEqual(byPos.groups.map(g => g.entry.lexeme), ['Абраам', 'Алёша']);
+assert.deepStrictEqual(byPos.groups[0].candidates.map(c => c.id), [5], 'the Prop twin of Абраам');
+assert.deepStrictEqual(byPos.groups[1].candidates.map(c => c.id), [6], 'the lower-case twin of Алёша');
+assert.strictEqual(byPos.groups[0].entry.counts, null, 'counts are not known on this path');
+assert.strictEqual(bulkPlan(byPos.groups[0], 'Prop').kind, 'join');
+assert.strictEqual(bulkPlan(byPos.groups[1], 'Prop').kind, 'convert');
+assert.deepStrictEqual(calls2.filter(c => c[0] === 'search').map(c => c[4]), [0, 2, 4], 'pages of the chosen POS only (five A entries)');
 
 // bulk run: previews and merges one by one; a refusal does not stop the others
 const calls = [];

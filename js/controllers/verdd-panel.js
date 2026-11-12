@@ -8,7 +8,7 @@ import {
   normalizeBaseUrl, saveVerddConfig, newRow, draftsFromSentences, blockingReasons, homoState,
   nextHomoId, checkRow, sendRows, rowToPairPayload, validateRow, describeCounts, describeMerge,
   describeSplit, isUndetermined, tidyHeadword, mergeVerdict, findTwins, describeById, findEditCollision, exampleWarnings,
-  parseInitials, bulkPlan, scanCapitalisedNouns, runBulkMerge, runBulkConvert,
+  parseInitials, describeInitials, bulkPlan, scanCapitalisedNouns, scanCapitalisedByPos, runBulkMerge, runBulkConvert,
   TRANSLATION_TYPES, TRANSLATION_TYPE, DESCRIPTION_TYPE
 } from '../services/verdd-api-service.js';
 
@@ -58,7 +58,7 @@ export class VerddPanel {
     this.tab = 'send';
     this.merge = {
       mode: 'undetermined', language: '', groups: [], total: 0, loaded: false, previews: {}, open: null,
-      initials: '', targetPos: 'Prop', selected: new Set(), busy: false, scanNote: ''
+      initials: '', sourcePos: 'N', targetPos: 'Prop', selected: new Set(), busy: false, scanNote: ''
     };
     this.browse = { filters: { language: '', text: '', pos: '', contains: true }, results: [], total: 0, searched: false, detail: null };
   }
@@ -1011,7 +1011,7 @@ export class VerddPanel {
     const capital = this.merge.mode === CAPITALISED_NOUN;
     this.view('merge').innerHTML = `
       <p class="vw-hint">${capital
-        ? 'Nouns (POS N) of <strong>one language</strong> whose headword begins with a capital letter: names that may be proper nouns (Prop), or capitalised by mistake. Whether that is wrong depends on the language (weekdays and months are common nouns in many), which is why a language is required. Where the same word exists in lower case or under another POS it is offered as the entry to join. Nothing is changed until you confirm.'
+        ? 'Entries of <strong>one language</strong> (nouns, POS N, unless you choose another source POS) whose headword begins with a capital letter, optionally only with the chosen initial letter (told apart by Unicode value: Latin A and Cyrillic А are different): names that may be proper nouns (Prop), or capitalised by mistake. Whether that is wrong depends on the language (weekdays and months are common nouns in many), which is why a language is required. Where the same word exists in lower case or under another POS it is offered as the entry to join. Nothing is changed until you confirm.'
         : 'Entries whose part of speech is undetermined (empty, ZERO or UND) and that share their headword and language with an entry that has one. An <strong>empty</strong> entry can simply be absorbed; otherwise inspect both, then join them. Nothing is changed until you confirm.'}</p>
       <form class="vw-search" data-form="merge-find">
         <label>Find <select data-merge-filter="mode">
@@ -1020,10 +1020,12 @@ export class VerddPanel {
         </select></label>
         <label>Language <input data-merge-filter="language" list="vwLangs" value="${esc(this.merge.language)}" autocapitalize="off" placeholder="${capital ? 'e.g. fin' : 'all languages'}" ${capital ? 'required' : ''}></label>
         ${capital ? `
-        <label>Initial letters <input data-merge-filter="initials" value="${esc(this.merge.initials)}" autocapitalize="off" size="8" placeholder="all, or e.g. А Б"></label>
-        <label>Join into <input data-merge-filter="targetPos" list="vwPos" value="${esc(this.merge.targetPos)}" autocapitalize="off" size="6"></label>` : ''}
+        <label>Initial letter <input data-merge-filter="initials" value="${esc(this.merge.initials)}" autocapitalize="off" size="8" placeholder="all, or e.g. А Б"></label>
+        <label>POS of the entries (source) <input data-merge-filter="sourcePos" list="vwPos" value="${esc(this.merge.sourcePos)}" autocapitalize="off" size="6"></label>
+        <label>POS to join or change into (target) <input data-merge-filter="targetPos" list="vwPos" value="${esc(this.merge.targetPos)}" autocapitalize="off" size="6"></label>` : ''}
         <button class="btn btn-primary btn-sm" type="submit">Find</button>
       </form>
+      ${capital ? `<div class="vw-hint" id="vwInitialCodes">${esc(describeInitials(this.merge.initials))}</div>` : ''}
       <div class="vw-hint" id="vwMergeProgress" role="status"></div>
       <div id="vwMergeBody"></div>`;
     this.renderMergeBody();
@@ -1043,7 +1045,7 @@ export class VerddPanel {
       body.innerHTML = `<div class="vw-empty">${this.merge.mode === CAPITALISED_NOUN ? `No nouns with a capital initial in ${esc(this.merge.language.trim())}.` : 'No mergeable entries found.'}</div>`;
     } else {
       body.innerHTML = `
-        <div class="vw-hint">${total} ${this.merge.mode === CAPITALISED_NOUN ? `capitalised ${total === 1 ? 'noun' : 'nouns'}` : `mergeable ${total === 1 ? 'entry' : 'entries'}`}${esc(this.merge.scanNote)}.</div>
+        <div class="vw-hint">${total} ${this.merge.mode === CAPITALISED_NOUN ? (/^n$/i.test((this.merge.sourcePos || 'N').trim()) ? `capitalised ${total === 1 ? 'noun' : 'nouns'}` : `capitalised ${esc((this.merge.sourcePos || '').trim())} ${total === 1 ? 'entry' : 'entries'}`) : `mergeable ${total === 1 ? 'entry' : 'entries'}`}${esc(this.merge.scanNote)}.</div>
         ${this.merge.mode === CAPITALISED_NOUN ? this.bulkBarHtml() : ''}
         <div class="vw-cards">${groups.map(g => this.mergeGroupHtml(g)).join('')}</div>
         ${groups.length < total ? '<button class="btn btn-secondary btn-sm" data-action="merge-more">Show more</button>' : ''}`;
@@ -1056,7 +1058,7 @@ export class VerddPanel {
     return `
       <div class="vw-lemma">${withHeadword ? `${esc(entry.lexeme)} ` : ''}#${entry.id} <span class="vw-badge ${entry.pos && entry.pos !== 'ZERO' && entry.pos !== 'UND' ? 'vw-badge-ok' : 'vw-badge-warn'}">${esc(entry.pos || 'no POS')}</span>
         ${entry.checked ? '<span class="vw-badge vw-badge-ok">approved</span>' : ''}</div>
-      <div class="vw-meta">${esc(entry.language)}${esc(homo)} · ${esc(describeCounts(entry.counts))}</div>
+      <div class="vw-meta">${esc(entry.language)}${esc(homo)}${entry.counts ? ` · ${esc(describeCounts(entry.counts))}` : ''}</div>
       ${translations}`;
   }
 
@@ -1101,7 +1103,7 @@ export class VerddPanel {
       <article class="vw-card" data-merge-group="${e.id}">
         <header class="vw-card-head"><span class="vw-lemma">${esc(e.lexeme)}</span>${e.empty ? '<span class="vw-badge vw-badge-ok">empty</span>' : ''}${pick}</header>
         <div class="vw-merge-cols">
-          <div class="vw-merge-col vw-merge-from"><div class="vw-meta">Capital initial, tagged N</div>${this.mergeEntryHtml(e)}
+          <div class="vw-merge-col vw-merge-from"><div class="vw-meta">Capital initial, tagged ${esc(this.merge.sourcePos || 'N')}</div>${this.mergeEntryHtml(e)}
             <button class="btn btn-secondary btn-sm" data-action="merge-open" data-id="${e.id}">Open to edit</button></div>
           <div class="vw-merge-arrow">→</div>
           <div class="vw-merge-targets">${candidates || '<div class="vw-meta">No lower-case or other-POS entry of this word. Open it to change its POS (for example to Prop) or its headword.</div>'}</div>
@@ -1119,18 +1121,28 @@ export class VerddPanel {
     const capital = this.merge.mode === CAPITALISED_NOUN;
     const initials = parseInitials(this.merge.initials);
     await this.guard(async () => {
-      if (capital && initials.size && !append) {
-        // the server cannot filter by initial letter: read the language's capitalised nouns page by page and keep these
+      const sourcePos = (this.merge.sourcePos || 'N').trim() || 'N';
+      const otherPos = capital && sourcePos.toLowerCase() !== 'n';
+      if (capital && (initials.size || otherPos) && !append) {
+        // the server cannot filter by initial letter (and only lists N): read the language's entries page by page and keep these
         this.merge.busy = true;
         this.merge.selected = new Set();
         try {
-          const scan = await scanCapitalisedNouns(this.api, {
-            language: this.merge.language.trim(), initials,
-            onProgress: ({ scanned, total, found }) => this.setMergeProgress(`Reading capitalised nouns: ${scanned} of ${total}, ${found} with the chosen initial…`)
-          });
+          const language = this.merge.language.trim();
+          const scan = otherPos
+            ? await scanCapitalisedByPos(this.api, {
+              language, pos: sourcePos, initials,
+              onProgress: ({ scanned, total, found, twins }) => this.setMergeProgress(twins
+                ? `Looking for the same words: ${twins} of ${found}…`
+                : `Reading ${sourcePos} entries: ${scanned} of ${total}, ${found} with a capital initial…`)
+            })
+            : await scanCapitalisedNouns(this.api, {
+              language, initials,
+              onProgress: ({ scanned, total, found }) => this.setMergeProgress(`Reading capitalised nouns: ${scanned} of ${total}, ${found} with the chosen initial…`)
+            });
           this.merge.groups = scan.groups;
           this.merge.total = scan.groups.length;
-          this.merge.scanNote = ` among the ${scan.total} of this language with a capital initial`;
+          this.merge.scanNote = otherPos ? ` among the ${scan.total} ${sourcePos} entries of this language` : ` among the ${scan.total} of this language with a capital initial`;
         } finally {
           this.merge.busy = false;
           this.setMergeProgress('');
@@ -1353,8 +1365,10 @@ export class VerddPanel {
       this.merge.language = el.value;
       return;
     }
-    if (el.dataset.mergeFilter === 'initials' || el.dataset.mergeFilter === 'targetPos') {
+    if (['initials', 'sourcePos', 'targetPos'].includes(el.dataset.mergeFilter)) {
       this.merge[el.dataset.mergeFilter] = el.value;
+      const codes = this.root.querySelector('#vwInitialCodes');
+      if (codes && el.dataset.mergeFilter === 'initials') codes.textContent = describeInitials(el.value);
       return;
     }
     if (el.dataset.filter) {

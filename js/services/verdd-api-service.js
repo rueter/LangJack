@@ -344,6 +344,7 @@ const plural = (n, [one, many]) => `${n} ${n === 1 ? one : many}`;
 
 /** Short summary of what hangs off an entry, e.g. "2 relations, 1 example". */
 export function describeCounts(counts) {
+  if (!counts) return '';
   const parts = [
     [(counts.relations_from || 0) + (counts.relations_to || 0), MERGE_LABELS.relations],
     [counts.examples || 0, MERGE_LABELS.examples],
@@ -439,8 +440,25 @@ export function mergeVerdict(absorbed, keeper, { allowDifferentPos = false } = {
 /** The first letter of a headword, as Ve'rdd judges a capital initial ("(Алёша)" -> "А"). */
 export const firstLetter = (text) => (String(text ?? '').match(/\p{L}/u) || [''])[0];
 
-/** The letters typed into an "initial letters" box (any separators): a Set of lower-case letters; empty = every letter. */
-export const parseInitials = (input) => new Set((String(input ?? '').match(/\p{L}/gu) || []).map(ch => ch.toLowerCase()));
+/**
+ * The letters typed into an "initial letter" box (any separators; a letter may also be written as its code point,
+ * U+0410): a Set of lower-case letters; empty = every letter. Letters are told apart by their Unicode value, so a
+ * Latin A and a Cyrillic А are two different letters.
+ */
+export const parseInitials = (input) => {
+  const letters = new Set();
+  const text = String(input ?? '').replace(/U\+([0-9a-f]{4,6})/gi, (_, hex) => {
+    const ch = String.fromCodePoint(parseInt(hex, 16));
+    if (/\p{L}/u.test(ch)) letters.add(ch.toLowerCase());
+    return ' ';
+  });
+  (text.match(/\p{L}/gu) || []).forEach(ch => letters.add(ch.toLowerCase()));
+  return letters;
+};
+
+/** "А = U+0410, Б = U+0411": what the typed letters are, so a look-alike from another script is noticed. */
+export const describeInitials = (input) => [...parseInitials(input)]
+  .map(ch => `${ch.toUpperCase()} = U+${ch.toUpperCase().codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`).join(', ');
 
 /** Whether a headword begins with one of the letters; no letters chosen means every headword does. */
 export const matchesInitials = (headword, initials) => !initials.size || initials.has(firstLetter(headword).toLowerCase());
@@ -458,6 +476,41 @@ export function bulkTarget(group, targetPos = 'Prop') {
   if (same.length === 1) return { keeper: same[0] };
   if (same.length > 1) return { reason: `${same.length} ${targetPos} entries of this word: choose one yourself` };
   return { reason: `no ${targetPos} entry with exactly this headword` };
+}
+
+/**
+ * Capitalised entries of a part of speech other than N (Ve'rdd's own capitalised-noun listing only knows N): lists
+ * the language's entries of that POS page by page, keeps those with a capital initial among the chosen letters, and
+ * finds for each the entries of the same word (same spelling, lower case, or another POS) as groups { entry, candidates }.
+ */
+export async function scanCapitalisedByPos(api, { language, pos, initials = new Set(), pageSize = 500, onProgress = () => {}, shouldStop = () => false } = {}) {
+  const wanted = [];
+  let offset = 0;
+  let total = Infinity;
+  while (offset < total && !shouldStop()) {
+    const page = await api.searchLexemes({ language, pos, limit: pageSize, offset });
+    total = page.total;
+    if (!page.results.length) break;
+    offset += page.results.length;
+    page.results.forEach(l => {
+      const first = firstLetter(l.lexeme);
+      if (first && first !== first.toLowerCase() && matchesInitials(l.lexeme, initials)) wanted.push(l);
+    });
+    onProgress({ scanned: offset, total, found: wanted.length });
+  }
+  const groups = [];
+  const summary = (l) => ({ id: l.id, lexeme: l.lexeme, language: l.language, pos: l.pos, homoId: l.homoId, checked: l.checked, counts: null, empty: false, translations: [] });
+  for (const l of wanted) {
+    if (shouldStop()) break;
+    const spellings = [...new Set([l.lexeme, l.lexeme.slice(0, 1).toLowerCase() + l.lexeme.slice(1), l.lexeme.toLowerCase()])];
+    const twins = new Map();
+    for (const spelling of spellings) {
+      (await api.findLexemes({ language, lexeme: spelling })).forEach(m => { if (m.id !== l.id) twins.set(m.id, m); });
+    }
+    groups.push({ entry: summary(l), candidates: [...twins.values()].sort((a, b) => (a.homoId || 0) - (b.homoId || 0) || a.id - b.id).map(summary) });
+    onProgress({ scanned: offset, total, found: wanted.length, twins: groups.length });
+  }
+  return { groups, scanned: offset, total: Number.isFinite(total) ? total : offset, complete: offset >= (Number.isFinite(total) ? total : offset) };
 }
 
 /**
