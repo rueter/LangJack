@@ -8,6 +8,7 @@ import {
   normalizeBaseUrl, saveVerddConfig, newRow, draftsFromSentences, blockingReasons, homoState,
   nextHomoId, checkRow, sendRows, rowToPairPayload, validateRow, describeCounts, describeMerge,
   describeSplit, isUndetermined, tidyHeadword, mergeVerdict, findTwins, describeById, findEditCollision, exampleWarnings,
+  parseInitials, bulkTarget, scanCapitalisedNouns, runBulkMerge,
   TRANSLATION_TYPES, TRANSLATION_TYPE, DESCRIPTION_TYPE
 } from '../services/verdd-api-service.js';
 
@@ -55,7 +56,10 @@ export class VerddPanel {
     this.posList = VERDD_POS_FALLBACK;
     this.rows = [];
     this.tab = 'send';
-    this.merge = { mode: 'undetermined', language: '', groups: [], total: 0, loaded: false, previews: {}, open: null };
+    this.merge = {
+      mode: 'undetermined', language: '', groups: [], total: 0, loaded: false, previews: {}, open: null,
+      initials: '', targetPos: 'Prop', selected: new Set(), busy: false, scanNote: ''
+    };
     this.browse = { filters: { language: '', text: '', pos: '', contains: true }, results: [], total: 0, searched: false, detail: null };
   }
 
@@ -1015,10 +1019,19 @@ export class VerddPanel {
           <option value="${CAPITALISED_NOUN}" ${capital ? 'selected' : ''}>capitalised nouns (N)</option>
         </select></label>
         <label>Language <input data-merge-filter="language" list="vwLangs" value="${esc(this.merge.language)}" autocapitalize="off" placeholder="${capital ? 'e.g. fin' : 'all languages'}" ${capital ? 'required' : ''}></label>
+        ${capital ? `
+        <label>Initial letters <input data-merge-filter="initials" value="${esc(this.merge.initials)}" autocapitalize="off" size="8" placeholder="all, or e.g. А Б"></label>
+        <label>Join into <input data-merge-filter="targetPos" list="vwPos" value="${esc(this.merge.targetPos)}" autocapitalize="off" size="6"></label>` : ''}
         <button class="btn btn-primary btn-sm" type="submit">Find</button>
       </form>
+      <div class="vw-hint" id="vwMergeProgress" role="status"></div>
       <div id="vwMergeBody"></div>`;
     this.renderMergeBody();
+  }
+
+  setMergeProgress(text) {
+    const el = this.root.querySelector('#vwMergeProgress');
+    if (el) el.textContent = text;
   }
 
   renderMergeBody() {
@@ -1030,7 +1043,8 @@ export class VerddPanel {
       body.innerHTML = `<div class="vw-empty">${this.merge.mode === CAPITALISED_NOUN ? `No nouns with a capital initial in ${esc(this.merge.language.trim())}.` : 'No mergeable entries found.'}</div>`;
     } else {
       body.innerHTML = `
-        <div class="vw-hint">${total} ${this.merge.mode === CAPITALISED_NOUN ? `capitalised ${total === 1 ? 'noun' : 'nouns'}` : `mergeable ${total === 1 ? 'entry' : 'entries'}`}.</div>
+        <div class="vw-hint">${total} ${this.merge.mode === CAPITALISED_NOUN ? `capitalised ${total === 1 ? 'noun' : 'nouns'}` : `mergeable ${total === 1 ? 'entry' : 'entries'}`}${esc(this.merge.scanNote)}.</div>
+        ${this.merge.mode === CAPITALISED_NOUN ? this.bulkBarHtml() : ''}
         <div class="vw-cards">${groups.map(g => this.mergeGroupHtml(g)).join('')}</div>
         ${groups.length < total ? '<button class="btn btn-secondary btn-sm" data-action="merge-more">Show more</button>' : ''}`;
     }
@@ -1076,9 +1090,13 @@ export class VerddPanel {
         ${this.mergeEntryHtml(c, true)}
         <button class="btn btn-secondary btn-sm" data-action="merge-inspect" data-absorbed="${e.id}" data-keeper="${c.id}">Inspect &amp; join #${e.id} into this</button>
       </div>`).join('');
+    const target = bulkTarget(group, this.merge.targetPos);
+    const pick = target.keeper
+      ? `<label class="vw-inline"><input type="checkbox" data-bulk-select="${e.id}" ${this.merge.selected.has(e.id) ? 'checked' : ''}> Join into ${esc(this.merge.targetPos)} #${target.keeper.id}</label>`
+      : `<span class="vw-meta">Not for bulk: ${esc(target.reason)}.</span>`;
     return `
       <article class="vw-card" data-merge-group="${e.id}">
-        <header class="vw-card-head"><span class="vw-lemma">${esc(e.lexeme)}</span>${e.empty ? '<span class="vw-badge vw-badge-ok">empty</span>' : ''}</header>
+        <header class="vw-card-head"><span class="vw-lemma">${esc(e.lexeme)}</span>${e.empty ? '<span class="vw-badge vw-badge-ok">empty</span>' : ''}${pick}</header>
         <div class="vw-merge-cols">
           <div class="vw-merge-col vw-merge-from"><div class="vw-meta">Capital initial, tagged N</div>${this.mergeEntryHtml(e)}
             <button class="btn btn-secondary btn-sm" data-action="merge-open" data-id="${e.id}">Open to edit</button></div>
@@ -1094,15 +1112,116 @@ export class VerddPanel {
     if (this.merge.mode === CAPITALISED_NOUN && !this.merge.language.trim()) {
       return this.showToast('Enter a language code first (for example fin): whether a capital initial is wrong depends on the language.', 'error');
     }
+    if (this.merge.busy) return;
+    const capital = this.merge.mode === CAPITALISED_NOUN;
+    const initials = parseInitials(this.merge.initials);
     await this.guard(async () => {
-      const { total, groups } = await this.api.mergeCandidates({
-        language: this.merge.language.trim(), mode: this.merge.mode, limit: 10, offset: append ? this.merge.groups.length : 0
-      });
-      this.merge.groups = append ? [...this.merge.groups, ...groups] : groups;
-      this.merge.total = total;
+      if (capital && initials.size && !append) {
+        // the server cannot filter by initial letter: read the language's capitalised nouns page by page and keep these
+        this.merge.busy = true;
+        this.merge.selected = new Set();
+        try {
+          const scan = await scanCapitalisedNouns(this.api, {
+            language: this.merge.language.trim(), initials,
+            onProgress: ({ scanned, total, found }) => this.setMergeProgress(`Reading capitalised nouns: ${scanned} of ${total}, ${found} with the chosen initial…`)
+          });
+          this.merge.groups = scan.groups;
+          this.merge.total = scan.groups.length;
+          this.merge.scanNote = ` among the ${scan.total} of this language with a capital initial`;
+        } finally {
+          this.merge.busy = false;
+          this.setMergeProgress('');
+        }
+      } else {
+        const { total, groups } = await this.api.mergeCandidates({
+          language: this.merge.language.trim(), mode: this.merge.mode, limit: capital ? 50 : 10, offset: append ? this.merge.groups.length : 0
+        });
+        this.merge.groups = append ? [...this.merge.groups, ...groups] : groups;
+        this.merge.total = total;
+        this.merge.scanNote = '';
+        if (!append) this.merge.selected = new Set();
+      }
       this.merge.loaded = true;
       this.renderMergeBody();
     });
+  }
+
+  // ---- bulk: several capitalised nouns at once, each joined into its same-headword twin ------------------------
+
+  /** The groups that can be joined in bulk: they have exactly one twin of the chosen part of speech. */
+  bulkGroups() {
+    return this.merge.groups.filter(g => g.entry && bulkTarget(g, this.merge.targetPos).keeper);
+  }
+
+  bulkBarHtml() {
+    const joinable = this.bulkGroups();
+    const chosen = this.merge.selected.size;
+    const pos = esc(this.merge.targetPos);
+    return `
+      <div class="vw-actions vw-bulk-bar">
+        <label class="vw-inline"><input type="checkbox" data-bulk-all ${joinable.length && chosen === joinable.length ? 'checked' : ''} ${joinable.length ? '' : 'disabled'}> Select all ${joinable.length} that can join a ${pos} entry</label>
+        <button class="btn btn-primary btn-sm" data-action="bulk-join" ${chosen ? '' : 'disabled'}>Join ${chosen} selected into ${pos}…</button>
+      </div>
+      <div class="vw-hint">Each selected entry is joined into the ${pos} entry with exactly the same headword and then deleted. Ve'rdd is asked to check every join first; you see the result and confirm before anything changes.</div>`;
+  }
+
+  /** Redraw only the bar, so ticking boxes does not scroll or reset the list. */
+  refreshBulkBar() {
+    const bar = this.root.querySelector('.vw-bulk-bar');
+    if (!bar) return;
+    const holder = document.createElement('div');
+    holder.innerHTML = this.bulkBarHtml();
+    bar.replaceWith(holder.querySelector('.vw-bulk-bar'));
+  }
+
+  async bulkJoin() {
+    if (!this.requireApi() || this.merge.busy) return;
+    const items = [];
+    this.merge.groups.forEach(g => {
+      if (!g.entry || !this.merge.selected.has(g.entry.id)) return;
+      const { keeper } = bulkTarget(g, this.merge.targetPos);
+      if (keeper) items.push({ absorbedId: g.entry.id, keeperId: keeper.id, lexeme: g.entry.lexeme, options: this.mergeOptions(g.entry, keeper) });
+    });
+    if (!items.length) return;
+    this.merge.busy = true;
+    try {
+      await this.guard(async () => {
+        const check = await runBulkMerge(this.api, items, {
+          dryRun: true,
+          onProgress: ({ done, total }) => this.setMergeProgress(`Checking joins: ${done} of ${total}…`)
+        });
+        const good = check.filter(r => r.ok);
+        const bad = check.filter(r => !r.ok);
+        const moved = good.reduce((n, r) => n + Object.values(r.report?.moved || {}).reduce((a, b) => a + b, 0), 0);
+        const label = (r) => `${items.find(i => i.absorbedId === r.absorbedId).lexeme} #${r.absorbedId} → #${r.keeperId}`;
+        const lines = [
+          `Join ${good.length} ${good.length === 1 ? 'entry' : 'entries'} into the ${this.merge.targetPos} entry of the same word? Each joined entry is deleted afterwards.`,
+          `${moved} translations, examples and other items move to the kept entries.`,
+          ...good.slice(0, 8).map(r => `  ${label(r)}`),
+          ...(good.length > 8 ? [`  … and ${good.length - 8} more`] : []),
+          ...(bad.length ? ['', `${bad.length} cannot be joined and stay as they are:`, ...bad.slice(0, 8).map(r => `  ${label(r)}: ${r.error}`)] : [])
+        ];
+        this.setMergeProgress('');
+        if (!good.length) return this.showToast(`None of the selected entries can be joined: ${bad[0]?.error || 'refused by Ve\'rdd'}`, 'error');
+        if (!this.confirmAction(lines.join('\n'))) return;
+
+        const done = await runBulkMerge(this.api, good, {
+          onProgress: ({ done: n, total }) => this.setMergeProgress(`Joining: ${n} of ${total}…`)
+        });
+        const joined = new Set(done.filter(r => r.ok).map(r => r.absorbedId));
+        const failed = done.filter(r => !r.ok);
+        this.merge.groups = this.merge.groups.filter(g => !joined.has(g.entry?.id));
+        this.merge.total = Math.max(0, this.merge.total - joined.size);
+        joined.forEach(id => this.merge.selected.delete(id));
+        this.setMergeProgress('');
+        this.renderMergeBody();
+        const msg = `Joined ${joined.size} ${joined.size === 1 ? 'entry' : 'entries'} into ${this.merge.targetPos}.`;
+        this.showToast(failed.length ? `${msg} ${failed.length} failed: ${failed[0].error}` : msg, failed.length ? 'error' : 'success');
+      });
+    } finally {
+      this.merge.busy = false;
+      this.setMergeProgress('');
+    }
   }
 
   findMergeGroup(absorbedId) {
@@ -1208,6 +1327,10 @@ export class VerddPanel {
       this.merge.language = el.value;
       return;
     }
+    if (el.dataset.mergeFilter === 'initials' || el.dataset.mergeFilter === 'targetPos') {
+      this.merge[el.dataset.mergeFilter] = el.value;
+      return;
+    }
     if (el.dataset.filter) {
       this.browse.filters[el.dataset.filter] = el.type === 'checkbox' ? el.checked : el.value;
       return;
@@ -1247,6 +1370,14 @@ export class VerddPanel {
       // a changed choice makes a row that was already sent (or failed) a draft again, as typing does
       if (row.status === 'sent' || row.status === 'error') { row.status = 'draft'; row.message = ''; }
       this.refreshCard(row);
+    } else if (el.dataset.bulkSelect) {
+      const id = Number(el.dataset.bulkSelect);
+      if (el.checked) this.merge.selected.add(id); else this.merge.selected.delete(id);
+      this.refreshBulkBar();
+    } else if (el.dataset.bulkAll !== undefined) {
+      this.merge.selected = new Set(el.checked ? this.bulkGroups().map(g => g.entry.id) : []);
+      this.root.querySelectorAll('[data-bulk-select]').forEach(box => { box.checked = this.merge.selected.has(Number(box.dataset.bulkSelect)); });
+      this.refreshBulkBar();
     } else if (el.dataset.mergeFilter === 'mode') {
       this.merge.mode = el.value;
       this.merge.groups = [];
@@ -1297,7 +1428,8 @@ export class VerddPanel {
       'merge-inspect': () => this.inspectMerge(Number(el.dataset.absorbed), Number(el.dataset.keeper)),
       'merge-absorb': () => this.absorbEmpty(Number(el.dataset.absorbed), Number(el.dataset.keeper)),
       'merge-confirm': () => this.confirmMerge(Number(el.dataset.absorbed), Number(el.dataset.keeper)),
-      'merge-cancel': () => this.closeMergeDetail(Number(el.dataset.absorbed))
+      'merge-cancel': () => this.closeMergeDetail(Number(el.dataset.absorbed)),
+      'bulk-join': () => this.bulkJoin()
     };
     handlers[action]?.();
   }

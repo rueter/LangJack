@@ -432,6 +432,77 @@ export function mergeVerdict(absorbed, keeper, { allowDifferentPos = false } = {
   return { ok: true, differentHeadword: absorbed.lexeme !== keeper.lexeme, differentPos, takesPos: isUndetermined(keeper.pos) && !isUndetermined(absorbed.pos) };
 }
 
+// ---------------------------------------------------------------------------------------
+// Bulk merge of capitalised nouns into their proper-noun twins
+// ---------------------------------------------------------------------------------------
+
+/** The first letter of a headword, as Ve'rdd judges a capital initial ("(Алёша)" -> "А"). */
+export const firstLetter = (text) => (String(text ?? '').match(/\p{L}/u) || [''])[0];
+
+/** The letters typed into an "initial letters" box (any separators): a Set of lower-case letters; empty = every letter. */
+export const parseInitials = (input) => new Set((String(input ?? '').match(/\p{L}/gu) || []).map(ch => ch.toLowerCase()));
+
+/** Whether a headword begins with one of the letters; no letters chosen means every headword does. */
+export const matchesInitials = (headword, initials) => !initials.size || initials.has(firstLetter(headword).toLowerCase());
+
+/**
+ * The entry a capitalised noun can be joined into in bulk: the one candidate with exactly the same headword
+ * and the chosen part of speech (Prop). Anything else (none, or several such homonyms) is left for the
+ * single-entry merge, where the user chooses.
+ * @returns {{keeper: Object}|{reason: string}}
+ */
+export function bulkTarget(group, targetPos = 'Prop') {
+  const entry = group.entry;
+  const wanted = String(targetPos || '').trim().toLowerCase();
+  const same = (group.candidates || []).filter(c => c.lexeme === entry.lexeme && String(c.pos || '').toLowerCase() === wanted);
+  if (same.length === 1) return { keeper: same[0] };
+  if (same.length > 1) return { reason: `${same.length} ${targetPos} entries of this word: choose one yourself` };
+  return { reason: `no ${targetPos} entry with exactly this headword` };
+}
+
+/**
+ * Lists the capitalised nouns of a language page by page (the server cannot filter by initial) and keeps the groups
+ * whose headword begins with one of the letters.
+ * @param {Object} options
+ * @param {Function} [options.onProgress]  ({ scanned, total, found }) after each page
+ * @param {Function} [options.shouldStop]  () => true to stop early; what was found so far is returned
+ */
+export async function scanCapitalisedNouns(api, { language, initials = new Set(), pageSize = 100, onProgress = () => {}, shouldStop = () => false } = {}) {
+  const found = [];
+  let offset = 0;
+  let total = Infinity;
+  while (offset < total && !shouldStop()) {
+    const page = await api.mergeCandidates({ language, mode: 'capitalised-noun', limit: pageSize, offset });
+    total = page.total;
+    if (!page.groups.length) break;
+    offset += page.groups.length;
+    found.push(...page.groups.filter(g => matchesInitials(g.entry.lexeme, initials)));
+    onProgress({ scanned: offset, total, found: found.length });
+  }
+  return { groups: found, scanned: offset, total: Number.isFinite(total) ? total : offset, complete: offset >= (Number.isFinite(total) ? total : offset) };
+}
+
+/**
+ * Previews, or performs, the merge of each chosen entry into its twin, one after the other. One that Ve'rdd
+ * refuses does not stop the rest.
+ * @param {Array<{absorbedId:number, keeperId:number, options:Object}>} items
+ * @returns {Promise<Array<{absorbedId:number, keeperId:number, ok:boolean, report?:Object, error?:string}>>}
+ */
+export async function runBulkMerge(api, items, { dryRun = false, onProgress = () => {}, shouldStop = () => false } = {}) {
+  const results = [];
+  for (const item of items) {
+    if (shouldStop()) break;
+    try {
+      const report = await api.mergeLexeme(item.absorbedId, item.keeperId, { ...item.options, dryRun });
+      results.push({ ...item, ok: true, report });
+    } catch (error) {
+      results.push({ ...item, ok: false, error: describeApiError(error) });
+    }
+    onProgress({ done: results.length, total: items.length });
+  }
+  return results;
+}
+
 async function describeLexemes(api, lexemes) {
   return Promise.all(lexemes.slice(0, 12).map(async lexeme => {
     let translations = [];
