@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import {
-  firstLetter, parseInitials, matchesInitials, bulkTarget, scanCapitalisedNouns, runBulkMerge, VerddApiError
+  firstLetter, parseInitials, matchesInitials, bulkTarget, bulkPlan, scanCapitalisedNouns, runBulkMerge, runBulkConvert, VerddApiError
 } from '../js/services/verdd-api-service.js';
 
 console.log('=== Bulk merge of capitalised nouns into their Prop twins ===\n');
@@ -30,6 +30,13 @@ assert.match(bulkTarget(group(e(1, 'Алёша')), 'Prop').reason, /no Prop/);
 assert.match(bulkTarget(group(e(1, 'Алёша'), e(2, 'Алёша', 'Prop'), e(3, 'Алёша', 'Prop')), 'Prop').reason, /2 Prop entries/);
 // the target part of speech is the user's choice
 assert.strictEqual(bulkTarget(group(e(1, 'Алёша'), e(2, 'Алёша', 'Pron')), 'Pron').keeper.id, 2);
+
+// no Prop entry of the word at all: the noun itself can simply become Prop
+assert.deepStrictEqual(bulkPlan(group(e(1, 'Абраам')), 'Prop'), { kind: 'convert' });
+assert.deepStrictEqual(bulkPlan(group(e(1, 'Абраам'), e(2, 'абраам', 'N'), e(3, 'Абраам', 'V')), 'Prop'), { kind: 'convert' }, 'other spellings or POS do not stop it');
+assert.strictEqual(bulkPlan(group(e(1, 'Абраам'), e(2, 'Абраам', 'Prop')), 'Prop').kind, 'join', 'a twin: join, never convert');
+assert.strictEqual(bulkPlan(group(e(1, 'Абраам'), e(2, 'Абраам', 'Prop'), e(3, 'Абраам', 'Prop')), 'Prop').kind, 'none', 'several twins: the user chooses');
+assert.strictEqual(bulkPlan(group(e(1, 'Абраам', 'Prop')), 'Prop').kind, 'none', 'already of that part of speech');
 
 // scanning reads page after page and keeps only the chosen initials
 const all = [e(1, 'Алёша'), e(2, 'Анна'), e(3, 'Борис'), e(4, 'Василий'), e(5, 'Алексей')].map(x => group(x, e(x.id + 100, x.lexeme, 'Prop')));
@@ -75,5 +82,13 @@ assert.ok(calls.every(c => c.dryRun === false));
 assert.deepStrictEqual(calls.map(c => c.absorbed), [1, 3]);
 res = await runBulkMerge(mergeApi, items, { shouldStop: () => true });
 assert.strictEqual(res.length, 0, 'can be stopped');
+
+// bulk convert: one PATCH each, a refusal does not stop the rest
+const patched = [];
+const convApi = { async updateLexeme(id, fields) { patched.push([id, fields]); if (id === 2) throw new VerddApiError('no', 400, { pos: ['Not a valid POS.'] }); return {}; } };
+const conv = await runBulkConvert(convApi, [{ id: 1 }, { id: 2 }, { id: 3 }], { pos: 'Prop' });
+assert.deepStrictEqual(patched, [[1, { pos: 'Prop' }], [2, { pos: 'Prop' }], [3, { pos: 'Prop' }]]);
+assert.deepStrictEqual(conv.map(r => r.ok), [true, false, true]);
+assert.match(conv[1].error, /Not a valid POS/);
 
 console.log('✓ initials, Prop twin choice, paged scan, dry run then merge, refusals do not stop the rest');

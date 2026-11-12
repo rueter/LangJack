@@ -8,7 +8,7 @@ import {
   normalizeBaseUrl, saveVerddConfig, newRow, draftsFromSentences, blockingReasons, homoState,
   nextHomoId, checkRow, sendRows, rowToPairPayload, validateRow, describeCounts, describeMerge,
   describeSplit, isUndetermined, tidyHeadword, mergeVerdict, findTwins, describeById, findEditCollision, exampleWarnings,
-  parseInitials, bulkTarget, scanCapitalisedNouns, runBulkMerge,
+  parseInitials, bulkPlan, scanCapitalisedNouns, runBulkMerge, runBulkConvert,
   TRANSLATION_TYPES, TRANSLATION_TYPE, DESCRIPTION_TYPE
 } from '../services/verdd-api-service.js';
 
@@ -1090,10 +1090,13 @@ export class VerddPanel {
         ${this.mergeEntryHtml(c, true)}
         <button class="btn btn-secondary btn-sm" data-action="merge-inspect" data-absorbed="${e.id}" data-keeper="${c.id}">Inspect &amp; join #${e.id} into this</button>
       </div>`).join('');
-    const target = bulkTarget(group, this.merge.targetPos);
-    const pick = target.keeper
-      ? `<label class="vw-inline"><input type="checkbox" data-bulk-select="${e.id}" ${this.merge.selected.has(e.id) ? 'checked' : ''}> Join into ${esc(this.merge.targetPos)} #${target.keeper.id}</label>`
-      : `<span class="vw-meta">Not for bulk: ${esc(target.reason)}.</span>`;
+    const plan = bulkPlan(group, this.merge.targetPos);
+    const ticked = this.merge.selected.has(e.id) ? 'checked' : '';
+    const pick = plan.kind === 'join'
+      ? `<label class="vw-inline"><input type="checkbox" data-bulk-select="${e.id}" ${ticked}> Join into ${esc(this.merge.targetPos)} #${plan.keeper.id}</label>`
+      : plan.kind === 'convert'
+        ? `<label class="vw-inline"><input type="checkbox" data-bulk-select="${e.id}" ${ticked}> No ${esc(this.merge.targetPos)} entry: change this one to ${esc(this.merge.targetPos)}</label>`
+        : `<span class="vw-meta">Not for bulk: ${esc(plan.reason)}.</span>`;
     return `
       <article class="vw-card" data-merge-group="${e.id}">
         <header class="vw-card-head"><span class="vw-lemma">${esc(e.lexeme)}</span>${e.empty ? '<span class="vw-badge vw-badge-ok">empty</span>' : ''}${pick}</header>
@@ -1148,21 +1151,33 @@ export class VerddPanel {
 
   // ---- bulk: several capitalised nouns at once, each joined into its same-headword twin ------------------------
 
-  /** The groups that can be joined in bulk: they have exactly one twin of the chosen part of speech. */
-  bulkGroups() {
-    return this.merge.groups.filter(g => g.entry && bulkTarget(g, this.merge.targetPos).keeper);
+  /** The groups a bulk action applies to: kind 'join' (one twin of the chosen POS) or 'convert' (no such twin at all). */
+  bulkGroups(kind) {
+    return this.merge.groups.filter(g => {
+      if (!g.entry) return false;
+      const planned = bulkPlan(g, this.merge.targetPos).kind;
+      return kind ? planned === kind : planned !== 'none';
+    });
   }
 
   bulkBarHtml() {
-    const joinable = this.bulkGroups();
-    const chosen = this.merge.selected.size;
     const pos = esc(this.merge.targetPos);
+    const part = (kind, text) => {
+      const groups = this.bulkGroups(kind);
+      const all = groups.length && groups.every(g => this.merge.selected.has(g.entry.id));
+      return `<label class="vw-inline"><input type="checkbox" data-bulk-all="${kind}" ${all ? 'checked' : ''} ${groups.length ? '' : 'disabled'}> Select all ${groups.length} ${text}</label>`;
+    };
+    const chosen = [...this.merge.selected].map(id => this.merge.groups.find(g => g.entry?.id === id)).filter(Boolean).map(g => bulkPlan(g, this.merge.targetPos).kind);
+    const joins = chosen.filter(k => k === 'join').length;
+    const converts = chosen.filter(k => k === 'convert').length;
+    const what = [joins ? `join ${joins}` : '', converts ? `change ${converts} to ${pos}` : ''].filter(Boolean).join(' and ');
     return `
       <div class="vw-actions vw-bulk-bar">
-        <label class="vw-inline"><input type="checkbox" data-bulk-all ${joinable.length && chosen === joinable.length ? 'checked' : ''} ${joinable.length ? '' : 'disabled'}> Select all ${joinable.length} that can join a ${pos} entry</label>
-        <button class="btn btn-primary btn-sm" data-action="bulk-join" ${chosen ? '' : 'disabled'}>Join ${chosen} selected into ${pos}…</button>
+        ${part('join', `that can join a ${pos} entry`)}
+        ${part('convert', `with no ${pos} entry (change to ${pos})`)}
+        <button class="btn btn-primary btn-sm" data-action="bulk-join" ${chosen.length ? '' : 'disabled'}>${what ? `${what[0].toUpperCase()}${what.slice(1)}…` : 'Nothing selected'}</button>
       </div>
-      <div class="vw-hint">Each selected entry is joined into the ${pos} entry with exactly the same headword and then deleted. Ve'rdd is asked to check every join first; you see the result and confirm before anything changes.</div>`;
+      <div class="vw-hint">A selected entry is joined into the ${pos} entry with exactly the same headword and then deleted; one with no ${pos} entry of that word just gets the part of speech ${pos}. Ve'rdd is asked to check every join first; you see the result and confirm before anything changes.</div>`;
   }
 
   /** Redraw only the bar, so ticking boxes does not scroll or reset the list. */
@@ -1176,13 +1191,16 @@ export class VerddPanel {
 
   async bulkJoin() {
     if (!this.requireApi() || this.merge.busy) return;
+    const pos = this.merge.targetPos.trim();
     const items = [];
+    const conversions = [];
     this.merge.groups.forEach(g => {
       if (!g.entry || !this.merge.selected.has(g.entry.id)) return;
-      const { keeper } = bulkTarget(g, this.merge.targetPos);
-      if (keeper) items.push({ absorbedId: g.entry.id, keeperId: keeper.id, lexeme: g.entry.lexeme, options: this.mergeOptions(g.entry, keeper) });
+      const plan = bulkPlan(g, pos);
+      if (plan.kind === 'join') items.push({ absorbedId: g.entry.id, keeperId: plan.keeper.id, lexeme: g.entry.lexeme, options: this.mergeOptions(g.entry, plan.keeper) });
+      else if (plan.kind === 'convert') conversions.push({ id: g.entry.id, lexeme: g.entry.lexeme });
     });
-    if (!items.length) return;
+    if (!items.length && !conversions.length) return;
     this.merge.busy = true;
     try {
       await this.guard(async () => {
@@ -1194,28 +1212,36 @@ export class VerddPanel {
         const bad = check.filter(r => !r.ok);
         const moved = good.reduce((n, r) => n + Object.values(r.report?.moved || {}).reduce((a, b) => a + b, 0), 0);
         const label = (r) => `${items.find(i => i.absorbedId === r.absorbedId).lexeme} #${r.absorbedId} → #${r.keeperId}`;
+        const more = (list, n = 8) => (list.length > n ? [`  … and ${list.length - n} more`] : []);
         const lines = [
-          `Join ${good.length} ${good.length === 1 ? 'entry' : 'entries'} into the ${this.merge.targetPos} entry of the same word? Each joined entry is deleted afterwards.`,
-          `${moved} translations, examples and other items move to the kept entries.`,
-          ...good.slice(0, 8).map(r => `  ${label(r)}`),
-          ...(good.length > 8 ? [`  … and ${good.length - 8} more`] : []),
+          ...(good.length ? [
+            `Join ${good.length} ${good.length === 1 ? 'entry' : 'entries'} into the ${pos} entry of the same word? Each joined entry is deleted afterwards.`,
+            `${moved} translations, examples and other items move to the kept entries.`,
+            ...good.slice(0, 8).map(r => `  ${label(r)}`), ...more(good)
+          ] : []),
+          ...(conversions.length ? [
+            ...(good.length ? [''] : []),
+            `Change the part of speech of ${conversions.length} ${conversions.length === 1 ? 'entry' : 'entries'} to ${pos} (there is no ${pos} entry of the same word)?`,
+            ...conversions.slice(0, 8).map(c => `  ${c.lexeme} #${c.id}`), ...more(conversions)
+          ] : []),
           ...(bad.length ? ['', `${bad.length} cannot be joined and stay as they are:`, ...bad.slice(0, 8).map(r => `  ${label(r)}: ${r.error}`)] : [])
         ];
         this.setMergeProgress('');
-        if (!good.length) return this.showToast(`None of the selected entries can be joined: ${bad[0]?.error || 'refused by Ve\'rdd'}`, 'error');
+        if (!good.length && !conversions.length) return this.showToast(`None of the selected entries can be joined: ${bad[0]?.error || 'refused by Ve\'rdd'}`, 'error');
         if (!this.confirmAction(lines.join('\n'))) return;
 
-        const done = await runBulkMerge(this.api, good, {
-          onProgress: ({ done: n, total }) => this.setMergeProgress(`Joining: ${n} of ${total}…`)
-        });
-        const joined = new Set(done.filter(r => r.ok).map(r => r.absorbedId));
-        const failed = done.filter(r => !r.ok);
-        this.merge.groups = this.merge.groups.filter(g => !joined.has(g.entry?.id));
-        this.merge.total = Math.max(0, this.merge.total - joined.size);
-        joined.forEach(id => this.merge.selected.delete(id));
+        const joinedRes = await runBulkMerge(this.api, good, { onProgress: ({ done, total }) => this.setMergeProgress(`Joining: ${done} of ${total}…`) });
+        const convertedRes = await runBulkConvert(this.api, conversions, { pos, onProgress: ({ done, total }) => this.setMergeProgress(`Changing the part of speech: ${done} of ${total}…`) });
+        const gone = new Set([...joinedRes.filter(r => r.ok).map(r => r.absorbedId), ...convertedRes.filter(r => r.ok).map(r => r.id)]);
+        const failed = [...joinedRes, ...convertedRes].filter(r => !r.ok);
+        const joined = joinedRes.filter(r => r.ok).length;
+        const converted = convertedRes.filter(r => r.ok).length;
+        this.merge.groups = this.merge.groups.filter(g => !gone.has(g.entry?.id));
+        this.merge.total = Math.max(0, this.merge.total - gone.size);
+        gone.forEach(id => this.merge.selected.delete(id));
         this.setMergeProgress('');
         this.renderMergeBody();
-        const msg = `Joined ${joined.size} ${joined.size === 1 ? 'entry' : 'entries'} into ${this.merge.targetPos}.`;
+        const msg = [joined ? `Joined ${joined} into ${pos}.` : '', converted ? `Changed ${converted} to ${pos}.` : ''].filter(Boolean).join(' ') || 'Nothing was changed.';
         this.showToast(failed.length ? `${msg} ${failed.length} failed: ${failed[0].error}` : msg, failed.length ? 'error' : 'success');
       });
     } finally {
@@ -1375,7 +1401,7 @@ export class VerddPanel {
       if (el.checked) this.merge.selected.add(id); else this.merge.selected.delete(id);
       this.refreshBulkBar();
     } else if (el.dataset.bulkAll !== undefined) {
-      this.merge.selected = new Set(el.checked ? this.bulkGroups().map(g => g.entry.id) : []);
+      this.bulkGroups(el.dataset.bulkAll).forEach(g => { if (el.checked) this.merge.selected.add(g.entry.id); else this.merge.selected.delete(g.entry.id); });
       this.root.querySelectorAll('[data-bulk-select]').forEach(box => { box.checked = this.merge.selected.has(Number(box.dataset.bulkSelect)); });
       this.refreshBulkBar();
     } else if (el.dataset.mergeFilter === 'mode') {

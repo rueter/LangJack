@@ -461,6 +461,36 @@ export function bulkTarget(group, targetPos = 'Prop') {
 }
 
 /**
+ * What can be done with a capitalised noun in bulk: join it into its one same-headword twin of the chosen part
+ * of speech, or, when there is no such twin at all, simply change its own part of speech to it (Абраам N -> Prop).
+ * @returns {{kind:'join', keeper:Object}|{kind:'convert'}|{kind:'none', reason:string}}
+ */
+export function bulkPlan(group, targetPos = 'Prop') {
+  const target = bulkTarget(group, targetPos);
+  if (target.keeper) return { kind: 'join', keeper: target.keeper };
+  const wanted = String(targetPos || '').trim().toLowerCase();
+  const sameHeadword = (group.candidates || []).some(c => c.lexeme === group.entry.lexeme && String(c.pos || '').toLowerCase() === wanted);
+  if (!sameHeadword && String(group.entry.pos || '').toLowerCase() !== wanted) return { kind: 'convert' };
+  return { kind: 'none', reason: target.reason };
+}
+
+/** Changes the part of speech of each entry, one after the other; one that Ve'rdd refuses does not stop the rest. */
+export async function runBulkConvert(api, items, { pos, onProgress = () => {}, shouldStop = () => false } = {}) {
+  const results = [];
+  for (const item of items) {
+    if (shouldStop()) break;
+    try {
+      await api.updateLexeme(item.id, { pos });
+      results.push({ ...item, ok: true });
+    } catch (error) {
+      results.push({ ...item, ok: false, error: describeApiError(error) });
+    }
+    onProgress({ done: results.length, total: items.length });
+  }
+  return results;
+}
+
+/**
  * Lists the capitalised nouns of a language page by page (the server cannot filter by initial) and keeps the groups
  * whose headword begins with one of the letters.
  * @param {Object} options
