@@ -56,6 +56,12 @@ export function detectLanguageForWord(word, defaultLang = 'myv') {
     return detectLushootseedVariety(clean, defaultLang);
   }
 
+  // 0b. Cyrillic script, with no Latin letter in the token. Checked before the Skolt Sámi rule below: the modifier
+  //     letters «ʼ» (U+02BC) and «ˮ» (U+02EE) occur in Cyrillic Nenets (пыдоʼ, ханаˮ) and must not make it sms.
+  if (isCyrillicOnly(clean)) {
+    return detectCyrillicLanguage(clean, defaultLang);
+  }
+
   // 1. Skolt Sámi specific characters (ǥ, ǧ, ǩ, ǯ, ʒ, å, ʹ, ʼ, ˈ, ẹ), all precomposed on the sms keyboard;
   //    «õ» is shared with Võro
   if (/[ǩǧǯʒʼåʹǥˈẹ]/i.test(clean) || /^[kK]åʹll/i.test(clean)) {
@@ -103,14 +109,103 @@ export function detectLanguageForWord(word, defaultLang = 'myv') {
     return 'sms';
   }
 
-  // 4. Cyrillic script
-  if (/[\u0400-\u04FF]/.test(clean)) {
-    if (/[ӧі]/i.test(clean)) return defaultLang === 'koi' ? 'koi' : 'kpv';
-    if (/[ӟӝӥӵ]/i.test(clean)) return 'udm';
-    return defaultLang && /^(myv|mdf|kpv|koi|udm|sjd)$/.test(defaultLang) ? defaultLang : 'myv';
+  // 6. Cyrillic mixed with Latin letters in one token: as before, by the Cyrillic letters alone
+  if (/[Ѐ-ӿ]/.test(clean)) {
+    return detectCyrillicLanguage(clean, defaultLang);
   }
 
   return defaultLang || 'myv';
+}
+
+/** True when the token has a Cyrillic letter and no Latin letter (Latin-1 Supplement/Extended-A/B, Latin Extended Additional). */
+function isCyrillicOnly(word) {
+  return /[Ѐ-ӿ]/.test(word) && !/[A-Za-zÀ-ɏḀ-ỿ]/.test(word);
+}
+
+/**
+ * Removes paired quotation marks so that a closing «”» or «’» is not mistaken for a glottal-stop letter:
+ * a quote char with no letter before it, and a letter after it, opens (“ „ ” ‘ ‚ ’); a «” “ ’ ‘» straight after a letter
+ * closes the latest compatible opener. Both become a space. «« »» are never glottal stops and are left alone.
+ * An unpaired «”» or «’» after a letter stays: that is what the Nenets «ненэцянд’ хана”» looks like.
+ */
+export function stripQuotePairs(text) {
+  const OPEN = '“„”‘‚’';
+  const CLOSES = { '”': '“„”', '“': '„', '’': '‘‚’', '‘': '‚' };
+  const chars = Array.from(text);
+  const isLetter = c => !!c && /[\p{L}\p{M}]/u.test(c);
+  const stack = [];
+  const blank = new Set();
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (!(c in CLOSES) && !OPEN.includes(c)) continue;
+    if (isLetter(chars[i - 1])) {
+      const compat = CLOSES[c];
+      if (compat) {
+        for (let k = stack.length - 1; k >= 0; k--) {
+          if (compat.includes(chars[stack[k]])) {
+            blank.add(stack[k]);
+            blank.add(i);
+            stack.length = k;
+            break;
+          }
+        }
+      }
+    } else if (isLetter(chars[i + 1]) && OPEN.includes(c)) {
+      stack.push(i);
+    }
+  }
+  return blank.size ? chars.map((c, i) => (blank.has(i) ? ' ' : c)).join('') : text;
+}
+
+/**
+ * Cyrillic-script heuristics:
+ * - «ӧ, і»: Komi (kpv; koi with a koi default); «ӟ ӝ ӥ ӵ»: Udmurt
+ * - Kildin Sámi (sjd): «ӓ ҋ ҍ ӆ ӎ ҏ» (not used in Nenets)
+ * - Tundra Nenets (yrk): the letter for ŋ, written «ӈ» (UD_Nenets-Tundra) or «ӊ» / «ң» (the Nenets Bible), or the modifier letters «ʼ» (U+02BC) and «ˮ» (U+02EE) that its orthography
+ *   writes after a letter (glottal stop/palatalization). Neither Erzya, Moksha, Komi nor Udmurt uses them.
+ *   Kildin Sámi shares «ӈ» and «ӊ» (and also uses «ʼ»), which is why its own letters are tested first; a Kildin word
+ *   with only «ӈ» or «ʼ» cannot be told from Nenets by characters alone.
+ * - Keyboards often give «’» (U+2019) and «”» (U+201D) instead of «ʼ» and «ˮ»: after a Cyrillic letter they count
+ *   as Nenets too, unless they close a quotation opened earlier in the text (see stripQuotePairs). An ASCII «'» never counts.
+ *   Ukrainian and Belarusian also write an apostrophe after a letter (п’ять, об’єкт). In the Nenets corpora «ʼ» is
+ *   word-final (Bible, 3386 of 3386) or before a consonant (UD), never before a vowel, so «ʼ» and «’» before a vowel
+ *   do not count; «ˮ» does occur before vowels (Bible 178, UD 26) and counts anywhere. The letters «ї є ґ ў» also
+ *   keep a word from counting as Nenets by an apostrophe alone.
+ * - otherwise the default language if it is a Cyrillic-script one, else Erzya
+ */
+export function detectCyrillicLanguage(word, defaultLang = null) {
+  word = stripQuotePairs(word);
+  if (/[ӧі]/i.test(word)) return defaultLang === 'koi' ? 'koi' : 'kpv';
+  if (/[ӟӝӥӵ]/i.test(word)) return 'udm';
+  if (/[ӓҋҍӆӎҏ]/i.test(word)) return 'sjd';
+  if (/[ӈңӊ]/i.test(word)) return defaultLang === 'sjd' ? 'sjd' : 'yrk';
+  // «ʼ» / «’» never stand before a vowel in Nenets (word-final in the Bible, before a consonant twice in UD), unlike
+  // the Ukrainian/Belarusian apostrophe (п’ять, пʼять, сім’я); «ˮ» / «”» do occur before vowels (нюртеˮэʼ)
+  const NENETS_APOSTROPHE = /ʼ(?![аеёиіїоуыэєюяӧӓӥ])|[\u0400-\u04FF]’(?![аеёиіїоуыэєюяӧӓӥ])/i;
+  if ((NENETS_APOSTROPHE.test(word) || /ˮ|[\u0400-\u04FF]”/.test(word)) && !/[їєґў]/i.test(word)) {
+    return defaultLang === 'sjd' ? 'sjd' : 'yrk';
+  }
+  if (defaultLang === 'und') return 'und'; // detectLanguageForText: no marker, no vote
+  return defaultLang && /^(myv|mdf|kpv|koi|udm|sjd|yrk)$/.test(defaultLang) ? defaultLang : 'myv';
+}
+
+/**
+ * Language of a selected phrase from the characteristic letters of its words: the language most of the words
+ * with such letters point to. Returns null when no word carries one (the default language then stays).
+ */
+export function detectLanguageForText(text) {
+  if (!text || typeof text !== 'string') return null;
+  const UND = 'und';
+  const votes = new Map();
+  const plain = stripQuotePairs(text);
+  for (const tok of plain.match(/[\p{L}\p{M}][\p{L}\p{M}'’”ʼˮ\-]*/gu) || []) {
+    // a Cyrillic word with no marker comes back as the default; 'und' keeps it from voting
+    const lang = isCyrillicOnly(tok) ? detectCyrillicLanguage(tok, UND) : detectLanguageForWord(tok, UND);
+    if (lang && lang !== UND) votes.set(lang, (votes.get(lang) || 0) + 1);
+  }
+  let best = null;
+  for (const [lang, n] of votes) if (!best || n > best[1]) best = [lang, n];
+  return best ? best[0] : null;
 }
 
 /**
@@ -240,6 +335,12 @@ export async function analyzeWordWithLanguageAssurance(word, preferredLang = 'my
         return { lang: cand, readings: candReadings };
       }
     } catch (_) {}
+  }
+
+  // Tundra Nenets and Kildin Sámi have no analyzer in LangJack: when the characters point to one of them and the
+  // preferred language recognized nothing, report the detected language (with no readings) instead of the preferred one
+  if (detectedLang !== primaryLang && (detectedLang === 'yrk' || detectedLang === 'sjd')) {
+    return { lang: detectedLang, readings: [] };
   }
 
   // If no language found valid morphological readings, return primaryLang with original readings
@@ -481,8 +582,26 @@ export async function handleShowDictionaryCard(tab, text, srcLang = null, option
     // Phrase / Sentence: Tokenize and analyze each word
     await analyzerService.ensureModelForLanguage(preferredLang);
     await dictionaryService.init();
-    const sentences = await analyzerService.analyzeText(cleanText, preferredLang);
-    const tokens = sentences[0]?.tokens || [];
+    let phraseLang = preferredLang;
+    let sentences = await analyzerService.analyzeText(cleanText, phraseLang);
+    let tokens = sentences[0]?.tokens || [];
+
+    // Same rule as for a single word: the preferred language stays unless it recognizes none of the words and the
+    // characteristic letters of the phrase point to another one (Cyrillic Nenets «пыдоʼ ... ханаˮ» → yrk, not sms)
+    const recognized = tokens.some(t => !t.isPunct && t.selectedReading && !t.selectedReading.isGuessed);
+    if (!recognized) {
+      const detected = normalizeLangCode(detectLanguageForText(cleanText) || phraseLang);
+      if (detected !== phraseLang) {
+        try {
+          phraseLang = detected;
+          await analyzerService.ensureModelForLanguage(phraseLang);
+          sentences = await analyzerService.analyzeText(cleanText, phraseLang);
+          tokens = sentences[0]?.tokens || [];
+        } catch (_) {
+          // keep the tokens of the preferred language; the card still reports the detected one
+        }
+      }
+    }
 
     for (const tok of tokens) {
       if (!tok.isPunct) {
@@ -490,12 +609,12 @@ export async function handleShowDictionaryCard(tab, text, srcLang = null, option
         const bestReading = nonGuessed || tok.selectedReading;
         let lem = tok.lemma || (bestReading ? bestReading.lemma : tok.form);
         lem = stripGuessTags(lem || '') || tok.form;
-        tok.glosses = dictionaryService.lookupGlosses(lem, preferredLang, 'all');
+        tok.glosses = dictionaryService.lookupGlosses(lem, phraseLang, 'all');
       }
     }
 
-    if (tab?.id && preferredLang) {
-      tabLanguageCache.set(tab.id, preferredLang);
+    if (tab?.id && phraseLang) {
+      tabLanguageCache.set(tab.id, phraseLang);
     }
 
     const tgtLang = options.tgtLang || (await storageService.getSetting('ui_tgt_lang', 'all'));
@@ -503,7 +622,7 @@ export async function handleShowDictionaryCard(tab, text, srcLang = null, option
       isPhrase: true,
       text: cleanText,
       tokens,
-      srcLang: preferredLang,
+      srcLang: phraseLang,
       tgtLang: tgtLang || 'all',
       availableLangs: dictionaryService.getSourceLanguages()
     };

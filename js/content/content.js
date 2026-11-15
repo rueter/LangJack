@@ -412,6 +412,13 @@
     spa: 'Spanish'
   };
 
+  const EXTRA_SRC_LANG_NAMES = {
+    yrk: 'Tundra Nenets',
+    sjd: 'Kildin Sami',
+    lut: 'Lushootseed',
+    slh: 'Southern Lushootseed'
+  };
+
   function renderCardContent(cardEl, data, shadow) {
     const isPhrase = !!data.isPhrase;
     const word = data.text || '';
@@ -439,8 +446,15 @@
       izt: 'Ingrian'
     };
 
+    // A detected language with no dictionary or analyzer entry (yrk, sjd) still has to show in the selector;
+    // otherwise the browser selects the first option (sms) and misreports it
+    const langsWithSrc = Object.assign({}, langs);
+    if (!Object.keys(langsWithSrc).some(c => c.toLowerCase() === srcLang.toLowerCase())) {
+      langsWithSrc[srcLang] = EXTRA_SRC_LANG_NAMES[srcLang.toLowerCase()] || srcLang;
+    }
+
     // Lang selector options
-    const langOptions = Object.entries(langs).map(([code, name]) => {
+    const langOptions = Object.entries(langsWithSrc).map(([code, name]) => {
       const selected = code.toLowerCase() === srcLang.toLowerCase() ? 'selected' : '';
       return `<option value="${code}" ${selected}>${code} (${name})</option>`;
     }).join('');

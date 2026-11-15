@@ -32,6 +32,8 @@ export const KNOWN_LANGUAGES = {
   liv: 'Livonian',
   vot: 'Votic',
   izt: 'Ingrian',
+  yrk: 'Tundra Nenets',
+  sjd: 'Kildin Sami',
   apu: 'Apurinã',
   lut: 'Lushootseed',
   slh: 'Southern Lushootseed',

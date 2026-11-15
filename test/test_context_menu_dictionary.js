@@ -51,6 +51,8 @@ import {
   updateContextMenuForSelection,
   analyzeWordWithLanguageAssurance,
   detectLanguageForWord,
+  detectLanguageForText,
+  detectCyrillicLanguage,
   tabLanguageCache
 } from '../background.js';
 import { analyzerService } from '../js/services/analyzer-service.js';
@@ -555,5 +557,74 @@ assert.strictEqual(koiCard.hasMorphology, true, 'Card must report valid morpholo
 assert(koiCard.glosses.length > 0, 'Card must contain dictionary translations for "мунны"');
 assert(koiCard.glosses.some(g => g.gloss === 'go' || g.gloss === 'leave' || g.gloss.includes('идти') || g.gloss.includes('mennä')), 'Card must provide multilingual translations');
 console.log('✓ In-page dictionary card for Komi-Permyak "мунісӧ" successfully produced with lemma "мунны" and glosses');
+
+// 10f. Cyrillic Tundra Nenets (yrk) must not be reported as Skolt Sámi (sms) because of «ʼ» (U+02BC) / «ˮ» (U+02EE)
+console.log('\n--- 10f. Testing Tundra Nenets (yrk) Cyrillic vs Skolt Sámi (sms) ---');
+const yrkSentence = 'Тадтикахад пыдоʼ тикы ненэцяндʼ идмʼ ханаˮ.';
+assert.strictEqual(detectLanguageForWord('пыдоʼ'), 'yrk', '«ʼ» after a Cyrillic letter is Nenets, not sms');
+assert.strictEqual(detectLanguageForWord('пыдоʼ', 'sms'), 'yrk', 'An sms default must not claim Cyrillic Nenets');
+assert.strictEqual(detectLanguageForWord('ханаˮ', 'sms'), 'yrk', '«ˮ» (U+02EE) after a Cyrillic letter is Nenets');
+assert.strictEqual(detectLanguageForWord('ненэцяндʼ', 'myv'), 'yrk');
+assert.strictEqual(detectLanguageForWord('ӈока'), 'yrk', '«ӈ» alone is Nenets');
+assert.strictEqual(detectLanguageForText(yrkSentence), 'yrk', 'The Nenets sentence must be detected as yrk');
+assert.strictEqual(detectLanguageForText(yrkSentence.replace(/[ʼˮ]/g, '')), null, 'Without modifier letters the sentence has no marker; the default stays');
+// The Nenets Bible writes ŋ as «ӊ» (U+04CA) / «Ң» (U+04A2); UD_Nenets-Tundra writes «ӈ» (U+04C8). «ӊ» must not mean Kildin Sámi.
+assert.strictEqual(detectLanguageForWord('ненэцяӊэ'), 'yrk', '«ӊ» alone (Nenets Bible orthography) is Nenets');
+assert.strictEqual(detectLanguageForWord('Ңэмдахана', 'sms'), 'yrk', '«Ң» is Nenets');
+assert.strictEqual(detectLanguageForText('Вада ненэцяӊэ хэˮмя'), 'yrk');
+assert.strictEqual(detectLanguageForText('мэ ӈэмда еденакы'), 'yrk', 'UD «ӈ»');
+assert.strictEqual(detectLanguageForText('тэри ныдпида'), null, 'Nenets with no marker letter cannot be told from Erzya by characters');
+// Keyboards often give ’ (U+2019) and ” (U+201D) for ʼ and ˮ: after a Cyrillic letter they count as Nenets too
+const yrkSentenceKb = 'Тадтикахад пыдо’ тикы ненэцянд’ идм’ хана”.';
+assert.strictEqual(detectLanguageForText(yrkSentenceKb), 'yrk', 'Nenets typed with ’ and ” must be yrk');
+assert.strictEqual(detectLanguageForWord('пыдо’', 'sms'), 'yrk', '’ after a Cyrillic letter, single word');
+assert.strictEqual(detectLanguageForWord('хана”', 'sms'), 'yrk', '” after a Cyrillic letter, single word');
+assert.strictEqual(detectLanguageForWord('ханаˮ', 'sms'), 'yrk');
+// ordinary quotation marks are not glottal stops
+for (const t of ['Он сказал «мир» и ушёл.', 'Он сказал “мир” и ушёл.', 'Он сказал „мир“ и ушёл.', 'Он сказал ”мир” и ушёл.', 'Это ‘дом’ и ‘сад’.', 'Он сказал: “Мир дому твоему”']) {
+  assert.strictEqual(detectLanguageForText(t), null, `Quotation marks in «${t}» must not trigger yrk`);
+}
+assert.strictEqual(detectLanguageForWord('“мир”'), 'myv', 'a quoted single word is not yrk');
+assert.strictEqual(detectLanguageForWord('вастома'), 'myv');
+assert.strictEqual(detectLanguageForWord('пыдо\'', 'sms'), 'myv', 'a stray ASCII apostrophe after Cyrillic letters is not a marker');
+// a quoted Nenets word still counts through its own «ʼ», and an unpaired ” after a letter counts
+assert.strictEqual(detectLanguageForText('Он сказал “пыдоʼ” и ушёл.'), 'yrk');
+assert.strictEqual(detectLanguageForText('“Тадтикахад пыдо’ тикы” ненэцянд’ идм’ хана”'), 'yrk');
+// Ukrainian/Belarusian apostrophe is not Nenets
+assert.strictEqual(detectLanguageForText('об’єкт з’їзд'), null, 'Ukrainian «’» in words with «є ї» is not yrk');
+// «ʼ» / «’» before a vowel is the Ukrainian apostrophe, never Nenets («ˮ» does occur before vowels in Nenets)
+assert.strictEqual(detectLanguageForText('п’ять'), null, 'п’ять must not be yrk');
+assert.strictEqual(detectLanguageForWord('п’ять', 'sms'), 'myv', 'п’ять with an sms preference falls back to the Cyrillic default');
+assert.strictEqual(detectLanguageForText('пʼять мʼясо'), null, 'пʼять (U+02BC) before a vowel is not yrk');
+assert.strictEqual(detectLanguageForWord('нюртеˮэʼ'), 'yrk', 'Nenets «ˮ» before a vowel plus final «ʼ»');
+assert.strictEqual(detectLanguageForWord('нюртеˮэ'), 'yrk', '«ˮ» before a vowel alone is Nenets');
+assert.strictEqual(detectLanguageForWord('махаʼняю'), 'yrk', '«ʼ» before a consonant is Nenets (UD)');
+// Latin Skolt Sámi with curly quotes stays sms
+assert.strictEqual(detectLanguageForText('Mon ǩiõččum “kuuʹǩǩ” da ‘sääʹm’.'), 'sms', 'Skolt Sámi with quotation marks stays sms');
+assert.strictEqual(detectLanguageForText('Son lij “mõʼnn” da ”kåʹlle”.'), 'sms');
+// Kildin Sámi
+assert.strictEqual(detectLanguageForWord('ӓӆӆь', 'sms'), 'sjd');
+// Kildin Sámi (Cyrillic, also «ӈ» and «ʼ») keeps its own letters
+assert.strictEqual(detectLanguageForWord('ҍӆӆьӈ'), 'sjd', 'Kildin letters win over «ӈ»');
+assert.strictEqual(detectLanguageForWord('ӈӓҋ', 'yrk'), 'sjd');
+assert.strictEqual(detectCyrillicLanguage('ӈока', 'sjd'), 'sjd', 'A sjd default keeps «ӈ» words (not separable from yrk by characters)');
+// other Cyrillic languages are unchanged
+assert.strictEqual(detectLanguageForWord('мунісӧ', 'koi'), 'koi');
+assert.strictEqual(detectLanguageForWord('удмурт ӟуч'), 'udm');
+assert.strictEqual(detectLanguageForWord('вастома'), 'myv');
+assert.strictEqual(detectLanguageForWord('вастома', 'mdf'), 'mdf');
+// real Skolt Sámi, Latin script, keeps «ʹ ʼ ǩ»
+assert.strictEqual(detectLanguageForWord('sääʹm'), 'sms');
+assert.strictEqual(detectLanguageForWord('kuuʹǩǩ'), 'sms');
+assert.strictEqual(detectLanguageForWord('mõʼnn'), 'sms', 'Latin «ʼ» stays Skolt Sámi');
+assert.strictEqual(detectLanguageForText('Mõõnnâm kåʹlle'), 'sms');
+console.log('✓ yrk separated from sms, sjd and the other Cyrillic languages');
+
+const yrkWord = await analyzeWordWithLanguageAssurance('пыдоʼ', 'sms');
+assert.strictEqual(yrkWord.lang, 'yrk', 'Single word «пыдоʼ» with an sms preference is reported as yrk');
+const yrkCard = await handleShowDictionaryCard(mockTab, yrkSentence, 'sms');
+assert.strictEqual(yrkCard.isPhrase, true);
+assert.strictEqual(yrkCard.srcLang, 'yrk', 'The floater card for the Nenets sentence must report yrk, not the sms preference');
+console.log('✓ Floater card for «Тадтикахад пыдоʼ тикы ненэцяндʼ идмʼ ханаˮ.» reports yrk');
 
 console.log('\n🎉 ALL CONTEXT MENU DICTIONARY & ANNOTATOR DISPATCH TESTS PASSED! 🎉');
