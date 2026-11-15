@@ -599,6 +599,77 @@ assert.strictEqual(detectLanguageForText('пʼять мʼясо'), null, 'пʼя
 assert.strictEqual(detectLanguageForWord('нюртеˮэʼ'), 'yrk', 'Nenets «ˮ» before a vowel plus final «ʼ»');
 assert.strictEqual(detectLanguageForWord('нюртеˮэ'), 'yrk', '«ˮ» before a vowel alone is Nenets');
 assert.strictEqual(detectLanguageForWord('махаʼняю'), 'yrk', '«ʼ» before a consonant is Nenets (UD)');
+// Suffix -хана / -гана (after м or the letter for ŋ), lang-yrk affixes: Nenets with no marker letter
+assert.strictEqual(detectLanguageForWord('яляхана', 'sms'), 'yrk', '-хана is Nenets');
+assert.strictEqual(detectLanguageForWord('тикахана'), 'yrk');
+assert.strictEqual(detectLanguageForWord('нумгана'), 'yrk', '-гана after м is Nenets (к:г after a nasal)');
+assert.strictEqual(detectLanguageForText('тикы яляхана ныдпида'), null, 'one weak word (-хана) is not enough');
+assert.strictEqual(detectLanguageForText('тикы яляхана тикахана ныдпида'), null, 'two weak words are not enough');
+assert.strictEqual(detectLanguageForText('тикы яляхана тикахана хэвхана'), 'yrk', 'three weak words are');
+assert.strictEqual(detectLanguageForWord('органа'), 'myv', 'Russian «органа» is not Nenets');
+assert.strictEqual(detectLanguageForWord('хулигана'), 'myv', 'Russian «хулигана» is not Nenets');
+assert.strictEqual(detectLanguageForWord('хана'), 'myv', 'a bare «хана» has no stem');
+// Paradigm suffixes of lang-yrk (YRK_SUFFIX_RULES) and «э» after a non-dental: Nenets with no marker letter
+assert.strictEqual(detectLanguageForWord('вэрдамбидов', 'sms'), 'yrk', '«э» after the non-dental «в» is Nenets');
+assert.strictEqual(detectLanguageForWord('хэбта'), 'yrk');
+assert.strictEqual(detectLanguageForWord('тэри'), 'myv', '«э» after the dental «т» is also Erzya/Komi: no evidence');
+assert.strictEqual(detectLanguageForWord('сонзэ', 'sms'), 'myv', 'Erzya «сонзэ» is not Nenets');
+assert.strictEqual(detectLanguageForWord('партизантнэ'), 'myv', 'Erzya «-нэ» is not Nenets');
+assert.strictEqual(detectLanguageForWord('вастома', 'myv'), 'myv');
+assert.strictEqual(detectLanguageForWord('танцянда'), 'myv', '-нда alone is not a suffix rule');
+assert.strictEqual(detectLanguageForWord('яляхад'), 'yrk', 'Sg+Abl -хад');
+assert.strictEqual(detectLanguageForWord('тикахата'), 'yrk', 'Pl+Dat+PxSg3 -хата');
+assert.strictEqual(detectLanguageForWord('таравнани'), 'yrk', '-нани');
+assert.strictEqual(detectLanguageForWord('вэрдамзь'), 'yrk', 'Prt1 -мзь');
+// weak evidence counts a third of a vote in a phrase: Russian loans with «мэ», «гэ» do not make a Russian sentence Nenets
+assert.strictEqual(detectLanguageForText('Позвали мэра города'), null, 'one loan word with «мэ» is not enough');
+assert.strictEqual(detectLanguageForText('Самария явна хэбта таравы.'), null, 'one weak word: no verdict');
+assert.strictEqual(detectLanguageForText('хэбта мэвы тикахана'), 'yrk', 'three weak words');
+assert.strictEqual(detectLanguageForText('Когда выпускники сдали ЕГЭ в мэрии'), null);
+assert.strictEqual(detectLanguageForText('Нюртеˮэʼ Вада танявы'), 'yrk', 'a strong marker needs no second word');
+// Cyrillic words with a stray Latin letter (susoj.html: хаãвхэкомʼ, ялаýсаванодоʼ, ниоãта) are not sms or Apurinã
+assert.strictEqual(detectLanguageForWord('хаãвхэкомʼ', 'sms'), 'yrk', 'a stray Latin «ã» does not turn Nenets into sms');
+assert.strictEqual(detectLanguageForWord('ялаýсаванодоʼ'), 'yrk');
+assert.strictEqual(detectLanguageForWord('ниоãта'), 'myv', 'a stray «ã» does not make Cyrillic Apurinã');
+assert.strictEqual(detectLanguageForText('ӈамгэý таремʼ'), 'yrk');
+assert.strictEqual(detectLanguageForWord('kåʹll'), 'sms', 'Latin Skolt Sámi unchanged');
+assert.strictEqual(detectLanguageForWord('kåʹлl'), 'sms', 'a Latin word with one Cyrillic homoglyph stays Latin');
+// Udmurt, Hill Mari, Meadow Mari, Mansi (korp_pabivus xml_udm/mrj/mhr/mns, lang-udm/-mrj/-mhr/-mns alphabets)
+assert.strictEqual(detectLanguageForWord('вордӥськем'), 'udm', '«ӥ» is Udmurt');
+assert.strictEqual(detectLanguageForWord('ӵыжы-выжыос'), 'udm', '«ӵ» is Udmurt');
+assert.strictEqual(detectLanguageForWord('ӟуч', 'koi'), 'udm');
+assert.strictEqual(detectLanguageForWord('пӧрт', 'udm'), 'udm', 'shared «ӧ» keeps an udm default');
+assert.strictEqual(detectLanguageForWord('пӧрт', 'mhr'), 'mhr', 'shared «ӧ» keeps an mhr default');
+assert.strictEqual(detectLanguageForWord('пӧрт', 'mrj'), 'mrj', 'shared «ӧ» keeps an mrj default');
+assert.strictEqual(detectLanguageForWord('пӧрт'), 'kpv', 'shared «ӧ» with no default stays Komi');
+assert.strictEqual(detectLanguageForWord('мунісӧ', 'udm'), 'kpv', '«і» is Komi even with an udm default');
+assert.strictEqual(detectLanguageForWord('шӱлӹш'), 'mrj', '«ӹ» is Hill Mari');
+assert.strictEqual(detectLanguageForWord('мӱлӓндӹ', 'mhr'), 'mrj', '«ӓ ӹ» is Hill Mari even with an mhr default');
+assert.strictEqual(detectLanguageForWord('ӓвӓ'), 'mrj', '«ӓ» alone is Hill Mari');
+assert.strictEqual(detectLanguageForWord('ӓвӓ', 'sjd'), 'sjd', '«ӓ» alone keeps an sjd default');
+assert.strictEqual(detectLanguageForWord('тӱҥалыныт'), 'mhr', '«ҥ» is Meadow Mari');
+assert.strictEqual(detectLanguageForWord('ӱдырамаш', 'mrj'), 'mhr', 'ӱ with а/ы: labial harmony, Meadow Mari even with an mrj default');
+assert.strictEqual(detectLanguageForWord('тӱня'), 'mhr');
+assert.strictEqual(detectLanguageForWord('шӱм', 'mrj'), 'mrj', '«ӱ» alone keeps an mrj default');
+assert.strictEqual(detectLanguageForWord('шӱм'), 'mhr', '«ӱ» alone is Meadow Mari without a default');
+assert.strictEqual(detectLanguageForWord('наӈ', 'mrj'), 'yrk', '«ӈ» is not Mari (they write «ҥ»)');
+assert.strictEqual(detectLanguageForWord('о̄лнэ'), 'mns', 'macron vowel (U+0304) is Mansi');
+assert.strictEqual(detectLanguageForWord('ӣсус'), 'mns', 'precomposed «ӣ» is Mansi');
+assert.strictEqual(detectLanguageForWord('пы̄г'), 'mns');
+assert.strictEqual(detectLanguageForWord('āнум'), 'mns', 'Latin ā in a Cyrillic word: macron');
+assert.strictEqual(detectLanguageForWord('наӈ', 'mns'), 'mns', '«ӈ» alone keeps an mns default');
+assert.strictEqual(detectLanguageForWord('наӈ'), 'yrk', '«ӈ» alone without a default goes to Nenets');
+assert.strictEqual(detectLanguageForText('Ялпыӈ кол а̄ви ултта тотыглаӈкве'), 'mns', 'Mansi «ӈ» with one macron word');
+assert.strictEqual(detectLanguageForText('Наӈ āнум вуськасаслын'), 'mns');
+assert.strictEqual(detectLanguageForText('Исус Левим ӱжеш'), 'mhr', '«ӱ» alone ties mhr and mrj, mhr first');
+assert.strictEqual(detectLanguageForText('Кӱн пӹлӹшӹжӹ колышташ улы'), 'mrj', '«ӹ» outweighs a shared «ӱ»');
+assert.strictEqual(detectLanguageForText('Нош Астинь эксэй кышнолэн лыктэмез ӧз поты'), null, 'shared «ӧ» alone gives no vote for Komi');
+assert.strictEqual(detectLanguageForText('Нош Астинь вордӥськем ӧз поты'), 'udm');
+assert.strictEqual(detectLanguageForText('Мый ӱдырамашым тӱнян ӧрдыжеш'), 'mhr');
+assert.strictEqual(detectLanguageForText('Ӧз мун, мунісӧ'), 'kpv');
+// «’» «”» as quotation marks around a Nenets-free sentence do not make it Nenets: an unpaired closing ” is weak evidence
+assert.strictEqual(detectLanguageForText('Тушмонъёсме, кудъёсызлэн монэ эксэй каремзы уг поты азьын”».'), null);
+assert.strictEqual(detectLanguageForText('Тудо шижтара”.'), null, 'one unpaired ” is a third of a vote');
 // Latin Skolt Sámi with curly quotes stays sms
 assert.strictEqual(detectLanguageForText('Mon ǩiõččum “kuuʹǩǩ” da ‘sääʹm’.'), 'sms', 'Skolt Sámi with quotation marks stays sms');
 assert.strictEqual(detectLanguageForText('Son lij “mõʼnn” da ”kåʹlle”.'), 'sms');

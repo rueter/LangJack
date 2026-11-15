@@ -56,9 +56,9 @@ export function detectLanguageForWord(word, defaultLang = 'myv') {
     return detectLushootseedVariety(clean, defaultLang);
   }
 
-  // 0b. Cyrillic script, with no Latin letter in the token. Checked before the Skolt Sámi rule below: the modifier
+  // 0b. Cyrillic script, with most of the token's letters Cyrillic. Checked before the Skolt Sámi rule below: the modifier
   //     letters «ʼ» (U+02BC) and «ˮ» (U+02EE) occur in Cyrillic Nenets (пыдоʼ, ханаˮ) and must not make it sms.
-  if (isCyrillicOnly(clean)) {
+  if (isMostlyCyrillic(clean)) {
     return detectCyrillicLanguage(clean, defaultLang);
   }
 
@@ -117,9 +117,15 @@ export function detectLanguageForWord(word, defaultLang = 'myv') {
   return defaultLang || 'myv';
 }
 
-/** True when the token has a Cyrillic letter and no Latin letter (Latin-1 Supplement/Extended-A/B, Latin Extended Additional). */
-function isCyrillicOnly(word) {
-  return /[Ѐ-ӿ]/.test(word) && !/[A-Za-zÀ-ɏḀ-ỿ]/.test(word);
+/**
+ * True when most of the token's letters are Cyrillic: Cyrillic words carry stray Latin letters in some sources
+ * (susoj.html: хаãвхэкомʼ, ялаýсаванодоʼ, ниоãта), and a Latin-script word with a stray Cyrillic homoglyph stays Latin.
+ * Latin counts Latin-1 Supplement/Extended-A/B and Latin Extended Additional letters too.
+ */
+function isMostlyCyrillic(word) {
+  const cyr = (word.match(/[\u0400-\u04FF]/g) || []).length;
+  const lat = (word.match(/[A-Za-z\u00C0-\u024F\u1E00-\u1EFF]/g) || []).length;
+  return cyr > 0 && cyr > lat;
 }
 
 /**
@@ -129,8 +135,8 @@ function isCyrillicOnly(word) {
  * An unpaired «”» or «’» after a letter stays: that is what the Nenets «ненэцянд’ хана”» looks like.
  */
 export function stripQuotePairs(text) {
-  const OPEN = '“„”‘‚’';
-  const CLOSES = { '”': '“„”', '“': '„', '’': '‘‚’', '‘': '‚' };
+  const OPEN = '“„”‘‚’«‹';
+  const CLOSES = { '”': '“„”«', '“': '„', '’': '‘‚’‹', '‘': '‚', '»': '«', '›': '‹' };
   const chars = Array.from(text);
   const isLetter = c => !!c && /[\p{L}\p{M}]/u.test(c);
   const stack = [];
@@ -158,40 +164,99 @@ export function stripQuotePairs(text) {
 }
 
 /**
- * Cyrillic-script heuristics:
- * - «ӧ, і»: Komi (kpv; koi with a koi default); «ӟ ӝ ӥ ӵ»: Udmurt
- * - Kildin Sámi (sjd): «ӓ ҋ ҍ ӆ ӎ ҏ» (not used in Nenets)
- * - Tundra Nenets (yrk): the letter for ŋ, written «ӈ» (UD_Nenets-Tundra) or «ӊ» / «ң» (the Nenets Bible), or the modifier letters «ʼ» (U+02BC) and «ˮ» (U+02EE) that its orthography
+ * «э» after «в г м х» or the letter for ŋ (хэбта, мэвы, вэрдамбидов, ненэцяӊэ). Nenets writes «э» after any consonant, hard or
+ * soft (the palatal vowels are «я ё ю е и»), while Erzya and Komi write it almost only after the dentals «з с т н д л р ц»
+ * (сонзэ, партизантнэ, тесэ) and Moksha hardly at all. The set is limited to these letters, the non-dentals before which
+ * Nenets regularly has «э»; «п» (пэвдя, 80 more Bible tokens) and the rest are left out, as Russian loans have them (мэр, пэр,
+ * кэш, шэф). Measured on UD tokens: Nenets Bible 1,403 of 13,720, UD_Nenets-Tundra 69 of 912, Erzya 3 of 15,837, Moksha 0 of
+ * 3,613, Komi 0, Russian 115 of 600,000 (глэм, егэ, гэс). Weak evidence: a phrase needs three such words (detectLanguageForText).
+ */
+const YRK_NON_DENTAL_E = /[вгмхӈңӊ]э/i;
+
+/**
+ * Tundra Nenets (yrk) suffixes that mark a word spelled with no marker letter. Taken from the affix lattice of
+ * lang-yrk (src/fst/morphology/affixes/nouns.lexc, verbs.lexc; labels from its analyser) and kept only when the
+ * ending is absent from the UD treebanks of Erzya, Moksha, Komi-Zyrian and Komi-Permyak, and has at most four
+ * tokens in 600,000 words of UD Russian (names such as Ильхана). A stem of two letters or more is required.
+ * «к» of the suffix is voiced to «г» after м and the letter for ŋ (phonology.twolc к:г: нумʼ+Sg+Loc → нумгана);
+ * «-гана» alone is Russian too (органа, хулигана), so it counts only after those.
+ * The Bible and UD_Nenets-Tundra were used to check the endings occur in running text, not to choose them by frequency.
+ * Each rule keeps its morphological label so the rule table can later explain a classification.
+ */
+export const YRK_SUFFIX_RULES = [
+  { re: /[\u0400-\u04FF]{2,}(?:х|[мӈңӊ]г)ана$/i, label: 'Sg+Loc -хана' },
+  { re: /[\u0400-\u04FF]{2,}(?:х|[мӈңӊ]г)ад$/i, label: 'Sg+Abl -хад' },
+  { re: /[\u0400-\u04FF]{2,}(?:х|[мӈңӊ]г)анда$/i, label: 'Sg+Dat+PxSg3 -ханда' },
+  { re: /[\u0400-\u04FF]{2,}(?:х|[мӈңӊ]г)ата$/i, label: 'Pl+Dat+PxSg3 -хата' },
+  { re: /[\u0400-\u04FF]{2,}нан(?:да|и|д)$/i, label: 'Sg+Pros/Loc+PxSg3/1/2 -нанда -нани -нанд' },
+  { re: /[\u0400-\u04FF]{2,}дан(?:да|и)$/i, label: 'Sg+Abl, Pred+Gen +PxSg3/1 -данда -дани' },
+  { re: /[\u0400-\u04FF]{2,}(?:дамда|амд)$/i, label: 'Acc+PxSg3/2 -дамда -амд' },
+  { re: /[\u0400-\u04FF]{2,}[мн]зь$/i, label: 'Nom+Der/Cop+Ind+Prt1+Sc -мзь -нзь' },
+  { re: /[\u0400-\u04FF]{2,}анзь$/i, label: 'Prt1+ScDu3 -анзь' }
+];
+
+/**
+ * Cyrillic-script heuristics. Letters, checked against the Bible/UD corpora (korp_pabivus xml_mns, xml_mrj, xml_mhr,
+ * xml_udm, xml_yrk, UD) and the Alphabet sections of GiellaLT lang-mns/-mrj/-mhr/-udm/-yrk:
+ * - Mansi (mns): long vowels with a macron, precomposed «ӣ ӯ» or a vowel + U+0304 (о̄, а̄, ы̄); no other language here has them
+ * - Udmurt (udm): «ӥ ӟ ӝ ӵ»
+ * - Hill Mari (mrj): «ӹ»; Meadow Mari (mhr): «ҥ» (U+04A5; both alphabets have it, only mrj has «ӹ»). Both have «ӱ ӧ ӓ»:
+ *   «ӱ» alone is Meadow Mari unless the default is mrj. «ӈ» is never Mari: they write «ҥ». Meadow Mari has labial harmony,
+ *   Hill Mari does not: a word with «ӱ» and «а» or «ы», or two of «ӱ ӧ», is Meadow Mari (corpora: 86% of mhr ӱ/ӧ word types
+ *   have а/ы/о/у and 13% two rounded vowels; mrj 6% and 2%, where 88% have «ӹ ӓ» instead).
+ * - Kildin Sámi (sjd): «ҋ ҍ ӆ ӎ ҏ»; «ӓ» alone is Hill Mari unless the default is sjd
+ * - «ӧ» alone is shared by Komi, Udmurt and both Maris: a default among them is kept, else Komi (kpv; koi with a koi
+ *   default); «і» is Komi (Ukrainian and Belarusian have it too)
+ * - Tundra Nenets (yrk): the letter for ŋ, written «ӈ» (UD_Nenets-Tundra, Mansi has it too) or «ӊ» / «ң» (the Nenets Bible), or the modifier letters «ʼ» (U+02BC) and «ˮ» (U+02EE) that its orthography
  *   writes after a letter (glottal stop/palatalization). Neither Erzya, Moksha, Komi nor Udmurt uses them.
- *   Kildin Sámi shares «ӈ» and «ӊ» (and also uses «ʼ»), which is why its own letters are tested first; a Kildin word
- *   with only «ӈ» or «ʼ» cannot be told from Nenets by characters alone.
+ *   Kildin Sámi and Mansi share «ӈ» (Kildin «ӊ» too, and «ʼ»), which is why their own letters are tested first; a word
+ *   with only «ӈ» keeps an sjd or mns default and otherwise goes to Nenets, and cannot be told apart by characters alone.
+ *   Mansi marks long vowels with a macron from the 2000 orthography on, but not every word consistently, so older or
+ *   unmarked Mansi text with «ӈ» looks like Nenets.
  * - Keyboards often give «’» (U+2019) and «”» (U+201D) instead of «ʼ» and «ˮ»: after a Cyrillic letter they count
  *   as Nenets too, unless they close a quotation opened earlier in the text (see stripQuotePairs). An ASCII «'» never counts.
  *   Ukrainian and Belarusian also write an apostrophe after a letter (п’ять, об’єкт). In the Nenets corpora «ʼ» is
  *   word-final (Bible, 3386 of 3386) or before a consonant (UD), never before a vowel, so «ʼ» and «’» before a vowel
  *   do not count; «ˮ» does occur before vowels (Bible 178, UD 26) and counts anywhere. The letters «ї є ґ ў» also
  *   keep a word from counting as Nenets by an apostrophe alone.
+ * - Tundra Nenets paradigm suffixes (YRK_SUFFIX_RULES) on a word with no marker letter
  * - otherwise the default language if it is a Cyrillic-script one, else Erzya
  */
 export function detectCyrillicLanguage(word, defaultLang = null) {
   word = stripQuotePairs(word);
-  if (/[ӧі]/i.test(word)) return defaultLang === 'koi' ? 'koi' : 'kpv';
+  if (/[\u0304\u0305]/.test(word.normalize('NFD'))) return 'mns'; // also the precomposed «ӣ ӯ»
   if (/[ӟӝӥӵ]/i.test(word)) return 'udm';
-  if (/[ӓҋҍӆӎҏ]/i.test(word)) return 'sjd';
-  if (/[ӈңӊ]/i.test(word)) return defaultLang === 'sjd' ? 'sjd' : 'yrk';
+  if (/ӹ/i.test(word)) return 'mrj';
+  if (/ҥ/i.test(word)) return defaultLang === 'mrj' ? 'mrj' : 'mhr';
+  if (/[ҋҍӆӎҏ]/i.test(word)) return 'sjd';
+  if (/ӓ/i.test(word)) return defaultLang === 'sjd' ? 'sjd' : 'mrj';
+  if (/ӱ/i.test(word)) {
+    // Meadow Mari has labial harmony: ӱ/ӧ with а/ы, or a second rounded ӱ/ӧ, in one word (тӱҥалыныт, ӱдырамаш, тӱня);
+    // Hill Mari does not (ӱ/ӧ words take ӹ ӓ: шӱлӹш, мӱлӓндӹ)
+    if (/[аы]/i.test(word) || (word.match(/[ӱӧ]/gi) || []).length > 1) return 'mhr';
+    return defaultLang === 'mrj' ? 'mrj' : 'mhr';
+  }
+  if (/[ӧі]/i.test(word)) {
+    if (/ӧ/i.test(word) && !/і/i.test(word) && /^(udm|mhr|mrj)$/.test(defaultLang || '')) return defaultLang;
+    return defaultLang === 'koi' ? 'koi' : 'kpv';
+  }
+  if (/[ӈңӊ]/i.test(word)) return defaultLang === 'sjd' || defaultLang === 'mns' ? defaultLang : 'yrk';
   // «ʼ» / «’» never stand before a vowel in Nenets (word-final in the Bible, before a consonant twice in UD), unlike
   // the Ukrainian/Belarusian apostrophe (п’ять, пʼять, сім’я); «ˮ» / «”» do occur before vowels (нюртеˮэʼ)
   const NENETS_APOSTROPHE = /ʼ(?![аеёиіїоуыэєюяӧӓӥ])|[\u0400-\u04FF]’(?![аеёиіїоуыэєюяӧӓӥ])/i;
   if ((NENETS_APOSTROPHE.test(word) || /ˮ|[\u0400-\u04FF]”/.test(word)) && !/[їєґў]/i.test(word)) {
     return defaultLang === 'sjd' ? 'sjd' : 'yrk';
   }
+  // Weak evidence, for words with no marker letter: «э» after a non-dental consonant, and the paradigm suffixes
+  if (YRK_NON_DENTAL_E.test(word) || YRK_SUFFIX_RULES.some(r => r.re.test(word))) return defaultLang === 'sjd' ? 'sjd' : 'yrk';
   if (defaultLang === 'und') return 'und'; // detectLanguageForText: no marker, no vote
-  return defaultLang && /^(myv|mdf|kpv|koi|udm|sjd|yrk)$/.test(defaultLang) ? defaultLang : 'myv';
+  return defaultLang && /^(myv|mdf|kpv|koi|udm|sjd|yrk|mhr|mrj|mns)$/.test(defaultLang) ? defaultLang : 'myv';
 }
 
 /**
  * Language of a selected phrase from the characteristic letters of its words: the language most of the words
  * with such letters point to. Returns null when no word carries one (the default language then stays).
+ * Weak Nenets evidence («э» after a non-dental, paradigm suffixes) counts a third of a vote, and Nenets needs one whole vote (three weak words).
  */
 export function detectLanguageForText(text) {
   if (!text || typeof text !== 'string') return null;
@@ -200,12 +265,23 @@ export function detectLanguageForText(text) {
   const plain = stripQuotePairs(text);
   for (const tok of plain.match(/[\p{L}\p{M}][\p{L}\p{M}'’”ʼˮ\-]*/gu) || []) {
     // a Cyrillic word with no marker comes back as the default; 'und' keeps it from voting
-    const lang = isCyrillicOnly(tok) ? detectCyrillicLanguage(tok, UND) : detectLanguageForWord(tok, UND);
-    if (lang && lang !== UND) votes.set(lang, (votes.get(lang) || 0) + 1);
+    const lang = isMostlyCyrillic(tok) ? detectCyrillicLanguage(tok, UND) : detectLanguageForWord(tok, UND);
+    if (!lang || lang === UND) continue;
+    // «ӧ» alone is shared by Komi, Udmurt and both Maris: no vote for Komi from it
+    if (lang === 'kpv' && /ӧ/i.test(tok) && !/і/i.test(tok)) continue;
+    // weak Nenets evidence counts a third: «э» after a non-dental, paradigm suffixes (Russian loans have those too), and
+    // «’» «”» for «ʼ» «ˮ» (a closing quotation mark whose opener is in an earlier sentence looks the same)
+    const weak = lang === 'yrk' && isMostlyCyrillic(tok) && !/[ӈңӊʼˮ]/.test(tok);
+    const add = (l, n) => votes.set(l, (votes.get(l) || 0) + n);
+    // «ӈ» with no «ʼ ˮ» is Mansi as much as Nenets (Mansi also has «ӈ»): a vote for each; a tie goes to Nenets
+    if (lang === 'yrk' && /ӈ/i.test(tok) && !/[ʼˮ]/.test(tok) && !/[ӊң]/i.test(tok)) { add('yrk', 1); add('mns', 1); continue; }
+    // «ӱ» with no labial harmony and no «ҥ» fits Hill Mari as well as Meadow Mari: a vote for each
+    if (lang === 'mhr' && /ӱ/i.test(tok) && !/ҥ/i.test(tok) && !/[аы]/i.test(tok) && (tok.match(/[ӱӧ]/gi) || []).length === 1) { add('mhr', 1); add('mrj', 1); continue; }
+    add(lang, weak ? 1 / 3 : 1);
   }
   let best = null;
   for (const [lang, n] of votes) if (!best || n > best[1]) best = [lang, n];
-  return best ? best[0] : null;
+  return best && !(best[0] === 'yrk' && best[1] < 1) ? best[0] : null;
 }
 
 /**

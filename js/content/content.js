@@ -414,6 +414,10 @@
 
   const EXTRA_SRC_LANG_NAMES = {
     yrk: 'Tundra Nenets',
+    mns: 'Mansi',
+    mhr: 'Meadow Mari',
+    mrj: 'Hill Mari',
+    udm: 'Udmurt',
     sjd: 'Kildin Sami',
     lut: 'Lushootseed',
     slh: 'Southern Lushootseed'

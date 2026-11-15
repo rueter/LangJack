@@ -33,6 +33,7 @@ export const KNOWN_LANGUAGES = {
   vot: 'Votic',
   izt: 'Ingrian',
   yrk: 'Tundra Nenets',
+  mns: 'Mansi',
   sjd: 'Kildin Sami',
   apu: 'Apurinã',
   lut: 'Lushootseed',
