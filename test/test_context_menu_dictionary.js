@@ -52,6 +52,8 @@ import {
   analyzeWordWithLanguageAssurance,
   detectLanguageForWord,
   detectLanguageForText,
+  isPlausibleReading,
+  hasFrontHarmonyVowel,
   detectCyrillicLanguage,
   tabLanguageCache
 } from '../background.js';
@@ -670,6 +672,75 @@ assert.strictEqual(detectLanguageForText('Ӧз мун, мунісӧ'), 'kpv');
 // «’» «”» as quotation marks around a Nenets-free sentence do not make it Nenets: an unpaired closing ” is weak evidence
 assert.strictEqual(detectLanguageForText('Тушмонъёсме, кудъёсызлэн монэ эксэй каремзы уг поты азьын”».'), null);
 assert.strictEqual(detectLanguageForText('Тудо шижтара”.'), null, 'one unpaired ” is a third of a vote');
+// Võro (Väiku printś, Vaiku_prints_puhas_tekst.txt): precomposed acute where Unicode has it, combining U+0301 for t́ d́ h́ v́
+for (const w of ['pallõ', 'kõĺ', 'olĺ', 'iśki', 'ommaq', 'Tõtõstõsündünüq', 'kõgõ', 'parõmb', 'Kõnõli']) {
+  assert.strictEqual(detectLanguageForWord(w, 'sms'), 'vro', `Võro «${w}» with an sms default`);
+  assert.strictEqual(detectLanguageForWord(w, 'smn'), 'vro', `Võro «${w}» with an smn default`);
+}
+for (const w of ['ś', 'ŕ', 'ḱ', 'ĺ', 'ń', 'ṕ', 'ḿ', 'ǵ'].map(c => 'tu' + c + 'u')) {
+  assert.strictEqual(detectLanguageForWord(w, 'sms'), 'vro', `precomposed acute «${w}» is Võro`);
+}
+for (const c of ['t', 'd', 'h', 'v']) {
+  assert.strictEqual(detectLanguageForWord('ku' + c + '\u0301a', 'sms'), 'vro', `combining acute after «${c}» is Võro`);
+}
+assert.strictEqual(detectLanguageForWord('Saint-Exupéry', 'sms'), 'sms', 'acute on a vowel is not Võro');
+assert.strictEqual(detectLanguageForText('Ku ma olli kuvvõaastaganõ, näi üten raamatun, mink nimi olĺ “Tõtõstõsündünüq luuq”.'), 'vro');
+assert.strictEqual(detectLanguageForText('Kõnõli timäga britsist, golfist, poliitikast ja lipsest.'), 'vro', 'Võro «ts» words are not Apurinã');
+assert.strictEqual(detectLanguageForText('Joogivett jakku mul vaivalt nädälis aos.'), null, 'Võro «ä…ä» alone is not Finnish');
+// Võro front-vowel harmony: a short «ä ö ü» after the first syllable (jättäq, jürämäldäq, edimädse); Estonian has «ää öö üü» there
+assert.strictEqual(detectLanguageForWord('edimädse', 'sms'), 'vro', 'edimädse is Võro with an sms default');
+assert.strictEqual(detectLanguageForWord('edimädse', 'smn'), 'vro');
+assert.strictEqual(detectLanguageForWord('jättäq'), 'vro');
+assert.strictEqual(detectLanguageForWord('jürämäldäq', 'sms'), 'vro');
+assert.strictEqual(detectLanguageForWord('midä', 'sms'), 'vro');
+assert.strictEqual(detectLanguageForWord('seejärel', 'est'), 'est', 'an est default keeps Estonian compounds');
+assert.strictEqual(detectLanguageForWord('päikesesüsteemi', 'est'), 'est');
+assert.strictEqual(hasFrontHarmonyVowel('edimädse'), true);
+assert.strictEqual(hasFrontHarmonyVowel('tüüpiline'), false, 'long «üü» is not harmony');
+assert.strictEqual(hasFrontHarmonyVowel('kääne'), false, 'first-syllable «ä» is not harmony');
+assert.strictEqual(detectLanguageForWord('tämä'), 'fin', 'Finnish stays Finnish with no Sámi/Võro default');
+assert.strictEqual(detectLanguageForText('Timä iks vasta midä'), null, 'harmony words alone: Võro or Finnish, no verdict');
+assert.strictEqual(detectLanguageForText('Timä iks vasta midä, ommaq'), 'vro', 'one strong Võro word decides');
+assert.strictEqual(detectLanguageForText('sääʹm kuäʹttnjälmma'), 'sms', 'Skolt Sámi «ä» after the first syllable is not Võro');
+// the Skolt Sámi «ʼ ’» before «j» is not Võro: Jeänn’jam
+assert.strictEqual(detectLanguageForWord('Jeänn’jam', 'sms'), 'sms', 'Jeänn’jam is not a Võro word');
+assert.strictEqual(detectLanguageForWord('koll’je', 'sms'), 'sms');
+assert.strictEqual(detectLanguageForWord('pall\'oq'), 'vro', 'Võro apostrophe before a vowel');
+assert.strictEqual(detectLanguageForWord('oll\''), 'vro', 'Võro apostrophe at the end');
+// Hill Mari (mrj_изи_принц.pdf): «ӹ ӓ» decide it with an mhr or no default; «ӱ» alone stays ambiguous
+assert.strictEqual(detectLanguageForText('Дӓ мӹнь рисуен пушым.'), 'mrj');
+assert.strictEqual(detectLanguageForText('Тӹдӹ техеньӹ ылын:'), 'mrj');
+assert.strictEqual(detectLanguageForWord('мӹньӹм', 'mhr'), 'mrj');
+assert.strictEqual(detectLanguageForText('- А кӱ техень географ?'), 'mhr', '«ӱ» alone ties mhr and mrj, mhr first');
+// Skolt Sámi «-õs/-õš» after a consonant cluster (Uʹcc priinsâž: vuõssmõs, pirstõs, tiõttlõs, kõjldõs, meärrõs) is not Võro
+for (const w of ['vuõssmõs', 'pirstõs', 'tiõttlõs', 'kõjldõs', 'meärrõs', 'viiššlõs', 'tuõttsõs', 'veiddsõs', 'koummlo-õhtt']) {
+  assert.strictEqual(detectLanguageForWord(w, 'sms'), 'sms', `Skolt Sámi «${w}» is not Võro`);
+}
+assert.strictEqual(detectLanguageForWord('mooštstan', 'sms'), 'sms', 'a «ts» word is ordinary with an sms default');
+assert.strictEqual(detectLanguageForWord('latsi', 'vro'), 'vro');
+assert.strictEqual(detectLanguageForWord('suurõs', 'sms'), 'vro', 'Võro «-õs» after a single consonant');
+assert.strictEqual(detectLanguageForWord('kõgõ', 'sms'), 'vro');
+assert.strictEqual(detectLanguageForWord('tõõnõ', 'sms'), 'vro');
+assert.strictEqual(detectLanguageForText('Mon leäm viiššlõs ååum.'), 'sms');
+// Skolt Sámi word-final/initial «nj» and hyphenated clitics (lang-sms clitics.lexc) are not Võro
+assert.strictEqual(detectLanguageForWord('njikkõnj', 'sms'), 'sms', 'word-final nj is not Võro');
+assert.strictEqual(detectLanguageForWord('njikkõnja', 'sms'), 'sms');
+assert.strictEqual(detectLanguageForWord('ton-õs', 'sms'), 'sms', 'the clitic -õs is not Võro evidence');
+assert.strictEqual(detectLanguageForWord('ton-õs', 'smn'), 'smn');
+assert.strictEqual(detectLanguageForWord('olõ-õi'), 'vro', 'Võro «olõ» still counts before its own hyphenated «-õi»');
+// Skolt Sámi and Võro share «õ» but not «ʹ», «â», «å» or «q», «ü», acute consonants
+assert.strictEqual(detectLanguageForText('Da ij ni tõt leäkku.'), null);
+assert.strictEqual(detectLanguageForText('Mõõnnâm kåʹlle jäänn’jam'), 'sms');
+// the smn analyser reads «Tõtõstõsündünüq» as the abbreviation «t»: not a recognition
+assert.strictEqual(isPlausibleReading('Tõtõstõsündünüq', { lemma: 't', tags: ['N', 'ABBR', 'Sg', 'Nom'] }), false);
+assert.strictEqual(isPlausibleReading('t.', { lemma: 't', tags: ['N', 'ABBR'] }), true);
+assert.strictEqual(isPlausibleReading('kodo', { lemma: 'kodo', tags: ['N', 'Sg', 'Nom'] }), true);
+for (const pref of ['sms', 'smn', 'myv', 'vro']) {
+  assert.strictEqual((await analyzeWordWithLanguageAssurance('Tõtõstõsündünüq', pref)).lang, 'vro', `word «Tõtõstõsündünüq» with preferred ${pref} is vro`);
+  assert.strictEqual((await handleShowDictionaryCard(mockTab, 'Tõtõstõsündünüq', pref)).srcLang, 'vro', `card word, preferred ${pref}`);
+  assert.strictEqual((await handleShowDictionaryCard(mockTab, 'Mi tulõ latsiq', pref)).srcLang, 'vro', `card phrase, preferred ${pref}`);
+}
+assert.strictEqual((await handleShowDictionaryCard(mockTab, 'Tõtõstõsündünüq mi kodo lätsi', 'smn')).srcLang, 'vro', 'one lucky word must not keep smn');
 // Latin Skolt Sámi with curly quotes stays sms
 assert.strictEqual(detectLanguageForText('Mon ǩiõččum “kuuʹǩǩ” da ‘sääʹm’.'), 'sms', 'Skolt Sámi with quotation marks stays sms');
 assert.strictEqual(detectLanguageForText('Son lij “mõʼnn” da ”kåʹlle”.'), 'sms');

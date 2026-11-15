@@ -75,7 +75,10 @@ export function detectLanguageForWord(word, defaultLang = 'myv') {
   }
 
   // 2. Apurinã specific patterns
-  if (/[ãẽĩỹ]/i.test(clean) || /(tx|ts|awapu)/i.test(clean)) {
+  // «ts» is ordinary in Skolt, Inari, North Sámi and Southern Sámi, Võro, Estonian and Finnish words (tuõttsõs, latsi, otsa):
+  // with one of those as the default only «tx», «awapu» and the nasal vowels mean Apurinã
+  const tsOrdinary = /^(sms|smn|sme|sma|vro|est|fin)$/.test(defaultLang || '');
+  if (/[ãẽĩỹ]/i.test(clean) || (tsOrdinary ? /(tx|awapu)/i : /(tx|ts|awapu)/i).test(clean)) {
     return 'apu';
   }
 
@@ -262,26 +265,48 @@ export function detectLanguageForText(text) {
   if (!text || typeof text !== 'string') return null;
   const UND = 'und';
   const votes = new Map();
+  const strongVotes = new Map();
+  const add = (l, n, strong = true) => {
+    votes.set(l, (votes.get(l) || 0) + n);
+    if (strong) strongVotes.set(l, (strongVotes.get(l) || 0) + n);
+  };
   const plain = stripQuotePairs(text);
   for (const tok of plain.match(/[\p{L}\p{M}][\p{L}\p{M}'’”ʼˮ\-]*/gu) || []) {
     // a Cyrillic word with no marker comes back as the default; 'und' keeps it from voting
     const lang = isMostlyCyrillic(tok) ? detectCyrillicLanguage(tok, UND) : detectLanguageForWord(tok, UND);
+    // a short «ä ö ü» after the first syllable is Võro harmony, Finnish alike: a weak vote for each
+    if (!isMostlyCyrillic(tok) && !/[čđŋâåǩǧǥǯʒʹˈẹ]/.test(tok) && hasFrontHarmonyVowel(tok)) {
+      if (lang !== 'fin') add('fin', 1 / 3, false);
+      if (lang !== 'vro') add('vro', 1 / 3, false);
+    }
+    // a Võro paradigm suffix (VRO_SUFFIX_RULES): a weak vote for Võro; Estonian shares some, so no vote for it either way
+    if (!isMostlyCyrillic(tok) && !/[čđŋâåǩǧǥǯʒʹˈẹ]/.test(tok) && lang !== 'vro' && hasVroSuffix(tok)) add('vro', 1 / 3, false);
     if (!lang || lang === UND) continue;
     // «ӧ» alone is shared by Komi, Udmurt and both Maris: no vote for Komi from it
     if (lang === 'kpv' && /ӧ/i.test(tok) && !/і/i.test(tok)) continue;
-    // weak Nenets evidence counts a third: «э» after a non-dental, paradigm suffixes (Russian loans have those too), and
-    // «’» «”» for «ʼ» «ˮ» (a closing quotation mark whose opener is in an earlier sentence looks the same)
-    const weak = lang === 'yrk' && isMostlyCyrillic(tok) && !/[ӈңӊʼˮ]/.test(tok);
-    const add = (l, n) => votes.set(l, (votes.get(l) || 0) + n);
+    // weak evidence counts a third of a vote: for Nenets «э» after a non-dental, paradigm suffixes (Russian loans have
+    // those too) and «’» «”» for «ʼ» «ˮ» (a closing quotation mark whose opener is in an earlier sentence looks the same);
+    // for Apurinã «ts» alone (Võro, Estonian and Finnish have it: latsi, otsa); for Finnish «ä…ä» alone (Võro has it:
+    // nälän, päävä). A language held only by weak votes needs one whole vote, so three such words.
+    const weak =
+      (lang === 'yrk' && isMostlyCyrillic(tok) && !/[ӈңӊʼˮ]/.test(tok)) ||
+      (lang === 'apu' && !/[ãẽĩỹ]|tx|awapu/i.test(tok)) ||
+      lang === 'fin';
     // «ӈ» with no «ʼ ˮ» is Mansi as much as Nenets (Mansi also has «ӈ»): a vote for each; a tie goes to Nenets
     if (lang === 'yrk' && /ӈ/i.test(tok) && !/[ʼˮ]/.test(tok) && !/[ӊң]/i.test(tok)) { add('yrk', 1); add('mns', 1); continue; }
     // «ӱ» with no labial harmony and no «ҥ» fits Hill Mari as well as Meadow Mari: a vote for each
     if (lang === 'mhr' && /ӱ/i.test(tok) && !/ҥ/i.test(tok) && !/[аы]/i.test(tok) && (tok.match(/[ӱӧ]/gi) || []).length === 1) { add('mhr', 1); add('mrj', 1); continue; }
-    add(lang, weak ? 1 / 3 : 1);
+    add(lang, weak ? 1 / 3 : 1, !weak);
   }
   let best = null;
   for (const [lang, n] of votes) if (!best || n > best[1]) best = [lang, n];
-  return best && !(best[0] === 'yrk' && best[1] < 1) ? best[0] : null;
+  if (!best) return null;
+  // two languages level with each other and neither with a strong vote (Võro or Finnish «ä» words): no verdict
+  for (const [lang, n] of votes) {
+    if (lang !== best[0] && n === best[1] && !strongVotes.get(lang) && !strongVotes.get(best[0])) return null;
+  }
+  // a language held only by weak votes needs one whole vote
+  return strongVotes.get(best[0]) || best[1] >= 1 ? best[0] : null;
 }
 
 /**
@@ -300,14 +325,29 @@ export function detectVoroWord(word, defaultLang = null) {
   if (!word || typeof word !== 'string' || /[Ѐ-ӿ]/.test(word)) return null;
   const nfc = word.normalize('NFC').toLowerCase();
   if (/[čđŋâ]/.test(nfc)) return null;
+  // «nj» at the end or the start of a word is Skolt Sámi (njikkõnj, njikkõnja), not Võro; a compound might have it inside
+  if (/nj$|^nj/.test(nfc)) return null;
+  // a hyphenated clitic that starts with «õ»: Skolt Sámi -õs, -ǥõs, -tõt (lang-sms clitics.lexc: ton-õs), a compound like
+  // koummlo-õhtt, and Võro -õi, -õs (olõ-õi, which keeps its own «õ»)
+  // and the Skolt Sámi derivational suffix «-õs/-õš» after a consonant cluster (vuõssmõs, pirstõs, tiõttlõs, kõjldõs): no
+  // Skolt Sámi word ends in «-õ», nor has «õ» before a final «l n m r d t»; Võro «suurõs» keeps its single consonant
+  const stem = nfc.replace(/-õ\p{L}*$/u, '').replace(/(?<=[^aeiouõäöüy'’ʹʼ-]{2})õ[sšzž]{1,2}$/u, '');
 
   if (/q$/.test(nfc)) return 'vro';
-  if (/[\p{L}\p{M}]['’]/u.test(nfc) && !/['’](s|t|d|ll|re|ve|m)$/.test(nfc)) return 'vro';
+  // the apostrophe stands at the end or before a vowel (pall'oq, oll'); Skolt Sámi writes «ʼ ’» before a consonant, mostly
+  // «j»: Jeänn’jam, koll’je (a word like that is not Võro, though a compound might be)
+  if (/[\p{L}\p{M}]['’](?![bcdfghjklmnpqrstvwxzčšžđŋ])/u.test(nfc) && !/['’](s|t|d|ll|re|ve|m)$/.test(nfc)) return 'vro';
   if (/[bcdfghklmnprstvz]́/.test(nfc.normalize('NFD'))) return 'vro';
   // single «õ» after the first syllable; Skolt Sámi has «õõ» (jällmõõžž) and «uõ, iõ» there, Estonian compounds «õ»
-  if (defaultLang !== 'est' && /^[^aeiouõäöüy]*[aeiouõäöüy]+[^aeiouõäöüy]+.*(^|[^uiõ])õ(?!õ)/.test(nfc)) return 'vro';
+  if (defaultLang !== 'est' && /^[^aeiouõäöüy]*[aeiouõäöüy]+[^aeiouõäöüy]+.*(?<![uiõ])õ(?!õ)/.test(stem)) return 'vro';
   if (/ü/.test(nfc)) return defaultLang === 'est' ? 'est' : 'vro';
 
+  // front-vowel harmony: a short «ä ö ü» after the first syllable (jättäq, jürämäldäq, edimädse, midä). Estonian has only
+  // the long «ää öö üü» there (and in compounds), Skolt and North Sámi have no vowel harmony. Finnish has it too
+  // (isä, tämä), so the rule applies only where the work is in Võro or Sámi: with those defaults, never an est default.
+  if (/^(vro|sms|smn|sme|sma)$/.test(defaultLang || '') && hasFrontHarmonyVowel(nfc)) return 'vro';
+  // paradigm suffixes of lang-vro that Skolt, Inari and North Sámi do not have (VRO_SUFFIX_RULES), same condition
+  if (/^(vro|sms|smn|sme|sma)$/.test(defaultLang || '') && hasVroSuffix(nfc)) return 'vro';
   if (defaultLang === 'vro' || defaultLang === 'est') {
     if (/^[^aeiouõäöüy]*[aeiouõäöüy]+[^aeiouõäöüy]+.*ä$/.test(nfc) && !/[aouõ]/.test(nfc)) return 'vro';
   }
@@ -316,6 +356,45 @@ export function detectVoroWord(word, defaultLang = null) {
     return 'vro';
   }
   return null;
+}
+
+/**
+ * Võro (vro) suffixes that mark a word spelled with none of the Võro letters (q, ü, õ, acute, harmony «ä ö ü»). Taken from the
+ * paradigms of lang-vro (src/fst/morphology/affixes: nouns.lexc, verbs.lexc), generated with its generator for the 150 most
+ * frequent noun, 150 verb, 40 adjective, pronoun and numeral lemmas of Väiku printś × every case/person cell, labels from
+ * the generator's tags. Kept only when the ending is absent from UD Skolt Sámi and UD North Sámi text and from the Skolt,
+ * Inari and North Sámi forms generated from lang-sms/-smn/-sme (so the ending separates Võro from them), and frequent in
+ * Võro. Endings that occur in Skolt, Inari or North Sámi paradigms are left out: «-ist» (smn 1.8% of forms), «-st», «-l»,
+ * «-s», «-ma», «-le».
+ * Estonian and Finnish share some of them («-lt» Estonian 2.1% of tokens, «-ile», «-isi» Finnish 0.8%), which is why
+ * the rules apply only where the work is in Võro or Sámi, and in a phrase count a third of a vote.
+ * The word-final «-q» (any Võro plural, finite or abessive form) and «õ» in a non-first syllable need no table:
+ * they are rules of detectVoroWord.
+ */
+export const VRO_SUFFIX_RULES = [
+  { re: /[aeiouõäöüy]mb$/, label: 'A+Comp+Sg+Nom -mb (inämb, parõmb)' },
+  { re: /[\p{L}]{2,}lt$/u, label: 'N/A+Sg/Pl+Abl -lt' },
+  { re: /[\p{L}]{2,}ile$/u, label: 'N/A+Pl+All, Sg+All -ile' },
+  { re: /[\p{L}]{2,}isi$/u, label: 'N+Pl+Par/Gen -isi' },
+  { re: /[\p{L}]{2,}[aei]he$/u, label: 'N/A+Sg/Pl+Ill -ahe -ihe -ehe' }
+];
+
+/** True when a Latin-script word ends in one of the Võro paradigm suffixes (VRO_SUFFIX_RULES). */
+export function hasVroSuffix(word) {
+  const w = (word || '').normalize('NFC').toLowerCase();
+  return VRO_SUFFIX_RULES.some(r => r.re.test(w));
+}
+
+/**
+ * A short «ä», «ö» or «ü» after the first syllable: Võro front-vowel harmony (jättäq, jürämäldäq, edimädse, midä, timä).
+ * Measured on tokens: Võro (Väiku printś) 11.0%, Skolt Sámi UD 0.4% (compounds and «uä, eä» diphthongs), North Sámi 0%,
+ * Estonian EDT 1.5% (compounds: seejärel, eesmärk), Finnish TDT 16.6% (että, tämä): Finnish cannot be told apart.
+ */
+export function hasFrontHarmonyVowel(word) {
+  const w = (word || '').normalize('NFC').toLowerCase();
+  const first = w.match(/^[^aeiouõäöüy]*[aeiouõäöüy]+/);
+  if (!first) return false;
+  return /(?<!ä)ä(?!ä)|(?<!ö)ö(?!ö)|(?<!ü)ü(?!ü)/.test(w.slice(first[0].length));
 }
 
 /**
@@ -352,6 +431,24 @@ export function detectLushootseedVariety(word, defaultLang = 'lut') {
 }
 
 /**
+ * A non-guessed reading that is only an accident of the lexicon: an abbreviation whose lemma is not the word itself.
+ * The smn analyser reads Võro «Tõtõstõsündünüq» as the abbreviation «t+N+ABBR», so a preferred or candidate analyser
+ * "recognized" a word of another language. Readings of the word as itself («t.», «Mi» for MI) stay plausible.
+ */
+export function isPlausibleReading(form, reading) {
+  if (!reading || !reading.lemma) return false;
+  const tags = reading.tags || [];
+  if (tags.includes('ABBR')) {
+    const norm = x => (x || '').toLowerCase().replace(/[.\s]+$/g, '');
+    return norm(reading.lemma) === norm(form);
+  }
+  return true;
+}
+
+/** Languages whose letters, spelled out in detectLanguageForWord, are strong evidence even where LangJack has no analysis. */
+const STRONG_EVIDENCE_LANGS = new Set(['vro', 'yrk', 'sjd', 'mns', 'mhr', 'mrj', 'udm', 'lut', 'slh']);
+
+/**
  * Ensures the appropriate language analyzer model is loaded and analyzes the word.
  * Priority #1: Immediately checks the manually set / preferred language first for maximum speed.
  * Priority #2: Only if preferred language yields 0 valid readings does language recognition
@@ -369,7 +466,7 @@ export async function analyzeWordWithLanguageAssurance(word, preferredLang = 'my
   let readings = analyzerService.analyze_word(cleanWord, primaryLang);
 
   // If primaryLang produced valid readings with lemma, return immediately (instant 0ms path)
-  if (readings.length > 0 && readings[0].lemma && !readings[0].isGuessed) {
+  if (readings.length > 0 && readings[0].lemma && !readings[0].isGuessed && isPlausibleReading(cleanWord, readings[0])) {
     return { lang: primaryLang, readings };
   }
 
@@ -381,11 +478,12 @@ export async function analyzeWordWithLanguageAssurance(word, preferredLang = 'my
 
   // 2. Priority #2 (Fallback Recognition): Try language recognition heuristic if different from primaryLang
   const detectedLang = normalizeLangCode(detectLanguageForWord(cleanWord, primaryLang));
+  let detectedReadings = [];
   if (detectedLang !== primaryLang) {
     try {
       await analyzerService.ensureModelForLanguage(detectedLang);
-      const detectedReadings = analyzerService.analyze_word(cleanWord, detectedLang);
-      if (detectedReadings.length > 0 && detectedReadings[0].lemma && !detectedReadings[0].isGuessed) {
+      detectedReadings = analyzerService.analyze_word(cleanWord, detectedLang);
+      if (detectedReadings.length > 0 && detectedReadings[0].lemma && !detectedReadings[0].isGuessed && isPlausibleReading(cleanWord, detectedReadings[0])) {
         return { lang: detectedLang, readings: detectedReadings };
       }
     } catch (_) {}
@@ -407,16 +505,17 @@ export async function analyzeWordWithLanguageAssurance(word, preferredLang = 'my
     try {
       await analyzerService.ensureModelForLanguage(cand);
       const candReadings = analyzerService.analyze_word(cleanWord, cand);
-      if (candReadings.length > 0 && candReadings[0].lemma && !candReadings[0].isGuessed) {
+      if (candReadings.length > 0 && candReadings[0].lemma && !candReadings[0].isGuessed && isPlausibleReading(cleanWord, candReadings[0])) {
         return { lang: cand, readings: candReadings };
       }
     } catch (_) {}
   }
 
-  // Tundra Nenets and Kildin Sámi have no analyzer in LangJack: when the characters point to one of them and the
-  // preferred language recognized nothing, report the detected language (with no readings) instead of the preferred one
-  if (detectedLang !== primaryLang && (detectedLang === 'yrk' || detectedLang === 'sjd')) {
-    return { lang: detectedLang, readings: [] };
+  // Nothing recognized the word. When its letters point to a language with strong orthographic evidence (Võro «q ü ś»,
+  // Nenets «ʼ ˮ», Udmurt «ӥ», ...), report that one: with its guessed readings if its analyzer gave any, none for Tundra
+  // Nenets and Kildin Sámi, which have no analyzer in LangJack. Võro «Tõtõstõsündünüq» is vro, not the preferred sms/smn.
+  if (detectedLang !== primaryLang && STRONG_EVIDENCE_LANGS.has(detectedLang)) {
+    return { lang: detectedLang, readings: detectedReadings };
   }
 
   // If no language found valid morphological readings, return primaryLang with original readings
@@ -662,10 +761,15 @@ export async function handleShowDictionaryCard(tab, text, srcLang = null, option
     let sentences = await analyzerService.analyzeText(cleanText, phraseLang);
     let tokens = sentences[0]?.tokens || [];
 
-    // Same rule as for a single word: the preferred language stays unless it recognizes none of the words and the
-    // characteristic letters of the phrase point to another one (Cyrillic Nenets «пыдоʼ ... ханаˮ» → yrk, not sms)
-    const recognized = tokens.some(t => !t.isPunct && t.selectedReading && !t.selectedReading.isGuessed);
-    if (!recognized) {
+    // Same rule as for a single word: the preferred language stays unless it does not recognize the phrase and the
+    // characteristic letters of the phrase point to another one (Cyrillic Nenets «пыдоʼ ... ханаˮ» → yrk, not sms).
+    // «Recognizes» means at least half of the words have a plausible, non-guessed reading, or all of them if the phrase
+    // has one or two: a few words of another language are read by chance (smn reads «mi», «t» ...), and one lucky word
+    // must not keep a Võro sentence at sms or smn.
+    const words = tokens.filter(t => !t.isPunct);
+    const known = words.filter(t => t.selectedReading && !t.selectedReading.isGuessed && isPlausibleReading(t.form, t.selectedReading)).length;
+    const recognizes = known > 0 && known >= Math.min(words.length, Math.ceil(words.length / 2));
+    if (!recognizes) {
       const detected = normalizeLangCode(detectLanguageForText(cleanText) || phraseLang);
       if (detected !== phraseLang) {
         try {
