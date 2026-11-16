@@ -54,6 +54,8 @@ import {
   detectLanguageForText,
   isPlausibleReading,
   hasFrontHarmonyVowel,
+  komiSuffixLanguage,
+  komiVarietyMarker,
   detectCyrillicLanguage,
   tabLanguageCache
 } from '../background.js';
@@ -644,7 +646,8 @@ assert.strictEqual(detectLanguageForWord('пӧрт', 'udm'), 'udm', 'shared «ӧ
 assert.strictEqual(detectLanguageForWord('пӧрт', 'mhr'), 'mhr', 'shared «ӧ» keeps an mhr default');
 assert.strictEqual(detectLanguageForWord('пӧрт', 'mrj'), 'mrj', 'shared «ӧ» keeps an mrj default');
 assert.strictEqual(detectLanguageForWord('пӧрт'), 'kpv', 'shared «ӧ» with no default stays Komi');
-assert.strictEqual(detectLanguageForWord('мунісӧ', 'udm'), 'kpv', '«і» is Komi even with an udm default');
+assert.strictEqual(detectLanguageForWord('мунісӧ', 'udm'), 'koi', '«-ісӧ» is the Permyak Prt1+Pl3, even with an udm default');
+assert.strictEqual(detectLanguageForWord('сійӧ', 'udm'), 'kpv', '«і» alone is Komi even with an udm default');
 assert.strictEqual(detectLanguageForWord('шӱлӹш'), 'mrj', '«ӹ» is Hill Mari');
 assert.strictEqual(detectLanguageForWord('мӱлӓндӹ', 'mhr'), 'mrj', '«ӓ ӹ» is Hill Mari even with an mhr default');
 assert.strictEqual(detectLanguageForWord('ӓвӓ'), 'mrj', '«ӓ» alone is Hill Mari');
@@ -668,7 +671,8 @@ assert.strictEqual(detectLanguageForText('Кӱн пӹлӹшӹжӹ колышта
 assert.strictEqual(detectLanguageForText('Нош Астинь эксэй кышнолэн лыктэмез ӧз поты'), null, 'shared «ӧ» alone gives no vote for Komi');
 assert.strictEqual(detectLanguageForText('Нош Астинь вордӥськем ӧз поты'), 'udm');
 assert.strictEqual(detectLanguageForText('Мый ӱдырамашым тӱнян ӧрдыжеш'), 'mhr');
-assert.strictEqual(detectLanguageForText('Ӧз мун, мунісӧ'), 'kpv');
+assert.strictEqual(detectLanguageForText('Ӧз мун, мунісӧ'), 'koi', '-ісӧ is Permyak');
+assert.strictEqual(detectLanguageForText('Ӧз мун, сійӧ'), 'kpv', 'і alone: Komi, variety open, a tie goes to Zyrian');
 // «’» «”» as quotation marks around a Nenets-free sentence do not make it Nenets: an unpaired closing ” is weak evidence
 assert.strictEqual(detectLanguageForText('Тушмонъёсме, кудъёсызлэн монэ эксэй каремзы уг поты азьын”».'), null);
 assert.strictEqual(detectLanguageForText('Тудо шижтара”.'), null, 'one unpaired ” is a third of a vote');
@@ -712,6 +716,49 @@ assert.strictEqual(detectLanguageForText('Дӓ мӹнь рисуен пушым.
 assert.strictEqual(detectLanguageForText('Тӹдӹ техеньӹ ылын:'), 'mrj');
 assert.strictEqual(detectLanguageForWord('мӹньӹм', 'mhr'), 'mrj');
 assert.strictEqual(detectLanguageForText('- А кӱ техень географ?'), 'mhr', '«ӱ» alone ties mhr and mrj, mhr first');
+// Komi-Zyrian and Komi-Permyak by suffix (KOMI_SUFFIX_RULES); Udmurt, Meadow Mari and Russian endings do not count
+assert.strictEqual(komiSuffixLanguage('мунісны'), 'kpv');
+assert.strictEqual(komiSuffixLanguage('мунісӧ'), 'koi');
+assert.strictEqual(komiSuffixLanguage('кыз'), null);
+// Zyrian «-д» / Permyak «-т» second person possessive and the plurals (lang-kpv, lang-koi nouns.lexc): variety markers, Komi texts only
+assert.strictEqual(komiVarietyMarker('кывыд'), 'kpv');
+assert.strictEqual(komiVarietyMarker('кывыт'), 'koi');
+assert.strictEqual(komiVarietyMarker('мортъяслы'), 'kpv');
+assert.strictEqual(komiVarietyMarker('морттэз'), 'koi', 'doubled consonant before -эз');
+assert.strictEqual(komiVarietyMarker('объяснение'), null, 'Russian объяс-');
+assert.strictEqual(komiVarietyMarker('Мӧскуысь'), 'kpv', 'Ela -ысь');
+assert.strictEqual(komiVarietyMarker('Мӧскуись'), 'koi', 'Ela -ись');
+assert.strictEqual(komiVarietyMarker('ыджыдджык'), 'kpv', 'Comp -джык');
+assert.strictEqual(komiVarietyMarker('ыджытжык'), 'koi', 'Comp -жык, not -джык');
+assert.strictEqual(komiVarietyMarker('сьӧкыд'), 'kpv');
+assert.strictEqual(komiVarietyMarker('сьӧкыт'), 'koi');
+assert.strictEqual(komiVarietyMarker('пельпомӧд'), 'kpv', 'Prl -ӧд');
+assert.strictEqual(komiVarietyMarker('пельпонӧт'), 'koi', 'Prl -ӧт');
+assert.strictEqual(komiVarietyMarker('нёльӧд'), 'kpv', 'Ord -ӧд');
+assert.strictEqual(komiVarietyMarker('нёльӧт'), 'koi', 'Ord -ӧт');
+assert.strictEqual(komiSuffixLanguage('веськыдкӧд'), 'kpv', 'Com -кӧд');
+assert.strictEqual(komiSuffixLanguage('веськытӧкӧт'), 'koi', 'Com -кӧт');
+assert.strictEqual(detectLanguageForText('Мӧскуысь ыджыдджык'), 'kpv', 'Zyrian cells decide a Komi text');
+assert.strictEqual(detectLanguageForText('Мӧскуись ыджытжык сійӧ'), 'koi', 'Permyak cells decide a Komi text');
+assert.strictEqual(detectLanguageForText('Сійӧ тіянлы кывыд кывыт'), 'kpv', 'one of each ties to Zyrian');
+assert.strictEqual(detectLanguageForText('Сійӧ вочіс кывыт да ыджыт'), 'koi', '«і» makes it Komi, «-ыт» makes it Permyak');
+assert.strictEqual(detectLanguageForText('Сійӧ вочіс кывыд да ыджыд'), 'kpv', '«і» makes it Komi, «-ыд» makes it Zyrian');
+assert.strictEqual(detectLanguageForText('Тудо ӧрыныт да лийыт'), null, 'Meadow Mari «-ыт» with «ӧ» alone is not Permyak');
+assert.strictEqual(detectLanguageForText('Иоаннэз ӧрыныт'), null, 'Udmurt «Иоаннэз» is not Permyak');
+assert.strictEqual(detectLanguageForWord('кывыт', 'koi'), 'koi');
+assert.strictEqual(detectLanguageForWord('кывыд', 'koi'), 'kpv', 'a kpv marker beats a koi default');
+
+assert.strictEqual(komiSuffixLanguage('согласны'), null, 'Russian «-сны» is not Zyrian');
+assert.strictEqual(komiSuffixLanguage('смыслы'), null);
+assert.strictEqual(komiSuffixLanguage('мунісны'), 'kpv');
+assert.strictEqual(komiSuffixLanguage('вӧчӧсны'), 'kpv');
+assert.strictEqual(komiSuffixLanguage('кышномуртъёслы'), null, 'Udmurt -ъёслы is not Zyrian -ыслы');
+assert.strictEqual(komiSuffixLanguage('лийыт'), null, 'Meadow Mari -ыт is not Permyak');
+assert.strictEqual(komiSuffixLanguage('солэн'), null);
+assert.strictEqual(detectLanguageForWord('бурісь', 'kpv'), 'koi', 'Permyak Abl -ісь beats a kpv default');
+assert.strictEqual(detectLanguageForWord('мунісны', 'koi'), 'kpv', 'Zyrian -сны beats a koi default');
+assert.strictEqual(detectLanguageForText('Ме пырті тіянӧс ваӧн, сія пыртас тіян олӧмісь'), 'koi');
+assert.strictEqual(detectLanguageForText('Удмурт кыл ӟуч ӥ вордӥськем лы'), 'udm', 'Udmurt «-лы» is not Zyrian');
 // Skolt Sámi «-õs/-õš» after a consonant cluster (Uʹcc priinsâž: vuõssmõs, pirstõs, tiõttlõs, kõjldõs, meärrõs) is not Võro
 for (const w of ['vuõssmõs', 'pirstõs', 'tiõttlõs', 'kõjldõs', 'meärrõs', 'viiššlõs', 'tuõttsõs', 'veiddsõs', 'koummlo-õhtt']) {
   assert.strictEqual(detectLanguageForWord(w, 'sms'), 'sms', `Skolt Sámi «${w}» is not Võro`);

@@ -199,6 +199,87 @@ export const YRK_SUFFIX_RULES = [
 ];
 
 /**
+ * Komi-Zyrian (kpv) and Komi-Permyak (koi) suffixes. Both write «ӧ і», so letters cannot tell them apart; the paradigms can.
+ * Taken from lang-kpv and lang-koi (analyser and generator, 200 nouns, 200 verbs, adjectives, pronouns and numerals of the
+ * Bible corpora × every cell attested there), labels from the generator's tags. An ending is kept when it
+ * - is common in the paradigms of one variety and absent from the other,
+ * - is frequent in that variety's Bible corpus (xml_kpv 143,073 tokens, xml_koi 172,482) and nearly absent from the other's,
+ * - holds in the separate UD treebanks (UD_Komi_Zyrian-IKDP/-Lattice 8,465 tokens, UD_Komi_Permyak-UH 898) and the Zyrian text of vidzanin (810,149 tokens: Permyak
+ *   endings there at most 0.12%, «-ӧт»; Zyrian endings in the Permyak literature at most 0.04%), and
+ * - stays under 0.06% of tokens in every other Cyrillic corpus: Erzya, Moksha, Russian, Udmurt, Hill and Meadow Mari, Mansi
+ *   and Nenets.
+ * The Permyak endings were checked again on the Permyak literature (langs/perm/permic/literature, 96 files, 3.9 million tokens,
+ * split by file into a training and a test half): «-ісь» 1.14/1.35% of tokens (train/test), «-ӧт» 0.96/0.89, «-ісӧ» 0.91/0.82,
+ * «-тӧн» 0.57/0.57, «-кӧт» 0.47/0.42; against Zyrian at most 0.04%. The Zyrian endings against that literature: «-сны» 0.014%,
+ * «-кӧд» 0.043%, «-сӧс» 0.007%.
+ * That last test removed endings that are common in Komi but shared: Zyrian «-ысь» and «-лы» (Udmurt), «-ыд» and «-ныд»,
+ * Permyak «-ыт» (Meadow Mari 3pl: лийыт), «-ись» (Russian); and Zyrian «-ӧй» and «-ӧд» (also in the Permyak treebank).
+ * Russian short adjectives end in «-сны» (согласны, интересны, весны) and «-ыслы» (смыслы, замыслы): 60,000 Russian UD sentences gave
+ * 67 false Zyrian verdicts with the plain endings, so «-сны» needs the Komi «і/и» or «ӧ» before it and «-ыслы» no «м».
+ * Share of tokens, Bible own/other and UD own/other: «-сны» 2.7/0 1.2/0, «-ъяс» 0.8/0 1.5/0, «-ыслы» 0.4/0 0.1/0;
+ * «-ісь» 2.6/0 0.5/0, «-ісӧ» 1.5/0 0.9/0.01, «-ӧт» 1.3/0.01 1.1/0.05, «-кӧт» 0.9/0 0.6/0.01, «-слӧ» 0.7/0 0.2/0.
+ */
+export const KOMI_SUFFIX_RULES = [
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}[іи]сны$/i, label: 'V+Ind+Prt1+Pl3 -исны -існы' },
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}ӧсны$/i, label: 'V+Ind+Fut+Pl3 -ӧсны' },
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}[ъь]яс$/i, label: 'N+Der/Dimin+Pl+Nom -ъяс -ьяс' },
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}(?:(?<!м)ы|я)слы$/i, label: 'Dat+Px3/Pl3 -яслы -ыслы' },
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}нныд$/i, label: 'Px+PxPl2 -нныд' },
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}йӧс$/i, label: 'N+Pl+Acc -йӧс' },
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}сӧс$/i, label: 'N/A+Pl+Acc -сӧс' },
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}кӧд$/i, label: 'N+Sg/Pl+Com (+Px) -кӧд' },
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}ӧд(?:іс|ны)$/i, label: 'V+Prt1+Sg3, V+Inf/ConNeg+Pl3 -ӧдіс -ӧдны' },
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}янлы$/i, label: 'N+Pl+Dat -янлы' },
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}джык/i, label: 'A+Comp -джык (ыджыдджык; 0 in Udmurt, Mari, Erzya, Moksha, Russian, Permyak)' },
+  { lang: 'koi', re: /[\u0400-\u04FF]{2,}л?ісь$/i, label: 'Abl+Px -ісь -лісь' },
+  { lang: 'koi', re: /[\u0400-\u04FF]{2,}[лтіи]?[іи]сӧ$/i, label: 'V+Ind+Prt1+Pl3 -ісӧ -исӧ -лісӧ -тісӧ' },
+  { lang: 'koi', re: /[\u0400-\u04FF]{2,}(?:с?кӧт|ӧт)$/i, label: 'Com+Px, Prl -ӧт -кӧт -скӧт' },
+  { lang: 'koi', re: /[\u0400-\u04FF]{2,}ы?слӧ$/i, label: 'Dat+Px3 -слӧ -ыслӧ' },
+  { lang: 'koi', re: /[\u0400-\u04FF]{2,}тӧн$/i, label: 'N+Sg+Ins -тӧн' },
+  { lang: 'koi', re: /[\u0400-\u04FF]{2,}ӧтчис$/i, label: 'V+Ind+Prt1+Sg3 -ӧтчис' },
+  { lang: 'koi', re: /[\u0400-\u04FF]{2,}ӧт(?:ны|ӧ|іс)$/i, label: 'Com/Prl+Px forms -ӧтны -ӧтӧ -ӧтіс' }
+];
+
+/** 'kpv' or 'koi' when a Cyrillic word ends in a suffix of one Komi variety (KOMI_SUFFIX_RULES), else null. */
+export function komiSuffixLanguage(word) {
+  const w = (word || '').normalize('NFC');
+  const hit = KOMI_SUFFIX_RULES.find(r => r.re.test(w));
+  return hit ? hit.lang : null;
+}
+
+/**
+ * Komi variety markers that only tell Zyrian from Permyak once the text is known to be Komi («і» or a Komi suffix): taken from the
+ * Px2, adjective, Prl, ordinal, Ela, Comp and plural cells of lang-kpv and lang-koi nouns.lexc. Zyrian ends in «-д», Permyak in «-т»:
+ * PxSg2 and adjective «-ыд / -ыт» (-яд / -ят after a vowel), Prl and ordinal «-ӧд / -ӧт» (PxSg2 never has -ӧд or -ӧт); Ela «-ысь / -ись»;
+ * Comp «-джык / -жык»; plural Zyrian «-ъяс/-ьяс» (+ case), Permyak «-эз» with a doubled consonant. Share of tokens, Zyrian
+ * (vidzanin list) / Permyak (literature): final «-ыд» 2.15/0.01, «-ыт» 0.01/1.13, «-ӧд» 0.92/0.13, «-ӧт» 0.12/0.92.
+ * Not usable alone: «-ыд» and «-ыт» are also Udmurt and Meadow Mari endings, and Udmurt has «Иоаннэз» (doubled «нн» + «эз»).
+ */
+export const KOMI_VARIETY_MARKERS = [
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}ыд$/i, label: 'N+PxSg2, A -ыд (Zyrian -д)' },
+  { lang: 'koi', re: /[\u0400-\u04FF]{2,}ыт$/i, label: 'N+PxSg2, A -ыт (Permyak -т)' },
+  // Prl and Ord, not PxSg2 (PxSg2 is only -ыд/-ыт, -яд/-ят): пельпомӧд / пельпонӧт, нёльӧд / нёльӧт
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}(?:ӧд|ід)$/i, label: 'Prl, Ord -ӧд (Zyrian -д)' },
+  { lang: 'koi', re: /[\u0400-\u04FF]{2,}(?:ӧт|іт)$/i, label: 'Prl, Ord -ӧт (Permyak -т)' },
+  { lang: 'kpv', re: /(?!.*объяс)[\u0400-\u04FF]{2,}[ъь]яс/i, label: 'N+Pl -ъяс -ьяс, also before a case suffix (Zyrian)' },
+  // lang-koi nouns.lexc: +Pl is «%>^1Cnsэз», the plural-initial consonant doubled before «эз» (lang-kpv: «%>ъяс»)
+  { lang: 'koi', re: /[\u0400-\u04FF]+([бвгджзклмнпрстфхцчшщ])\1эз/i, label: 'N+Pl, consonant doubled before -эз (-ттэз, -ннэз ...)' },
+  // Ela: Zyrian «-ысь» (Мӧскуысь), Permyak «-ись/-ісь» (Мӧскуись); Udmurt and Russian have both endings, hence gated
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}ысь$/i, label: 'Ela -ысь (Zyrian)' },
+  { lang: 'koi', re: /[\u0400-\u04FF]{2,}[иі]сь$/i, label: 'Ela -ись -ісь (Permyak)' },
+  // Comp: Zyrian «-джык» (ыджыдджык), Permyak «-жык» (ыджытжык); «-джык» also contains «жык», so Permyak excludes a preceding д
+  { lang: 'kpv', re: /[\u0400-\u04FF]{2,}джык/i, label: 'A+Comp -джык (Zyrian)' },
+  { lang: 'koi', re: /[\u0400-\u04FF]{2,}(?<!д)жык/i, label: 'A+Comp -жык (Permyak)' }
+];
+
+/** 'kpv' or 'koi' by a variety marker (KOMI_VARIETY_MARKERS), else null; use only for text that is already Komi. */
+export function komiVarietyMarker(word) {
+  const w = (word || '').normalize('NFC');
+  const hit = KOMI_VARIETY_MARKERS.find(r => r.re.test(w));
+  return hit ? hit.lang : null;
+}
+
+/**
  * Cyrillic-script heuristics. Letters, checked against the Bible/UD corpora (korp_pabivus xml_mns, xml_mrj, xml_mhr,
  * xml_udm, xml_yrk, UD) and the Alphabet sections of GiellaLT lang-mns/-mrj/-mhr/-udm/-yrk:
  * - Mansi (mns): long vowels with a macron, precomposed «ӣ ӯ» or a vowel + U+0304 (о̄, а̄, ы̄); no other language here has them
@@ -239,8 +320,16 @@ export function detectCyrillicLanguage(word, defaultLang = null) {
     if (/[аы]/i.test(word) || (word.match(/[ӱӧ]/gi) || []).length > 1) return 'mhr';
     return defaultLang === 'mrj' ? 'mrj' : 'mhr';
   }
+  // a Komi suffix that only one variety has (KOMI_SUFFIX_RULES), with or without «ӧ і»
+  const komiSuffix = komiSuffixLanguage(word);
+  if (komiSuffix) return komiSuffix;
+  // with a Komi default the variety markers count without «ӧ і» too (кывыд, кывыт)
+  if (/^(kpv|koi)$/.test(defaultLang || '')) { const v = komiVarietyMarker(word); if (v) return v; }
   if (/[ӧі]/i.test(word)) {
     if (/ӧ/i.test(word) && !/і/i.test(word) && /^(udm|mhr|mrj)$/.test(defaultLang || '')) return defaultLang;
+    // only with «і» (or a kpv/koi default): «ӧ» alone with «-ыт/-ыд» is Udmurt or Mari as well (ӧрыныт, уйвӧт)
+    const variety = /і/i.test(word) || /^(kpv|koi)$/.test(defaultLang || '') ? komiVarietyMarker(word) : null;
+    if (variety) return variety;
     return defaultLang === 'koi' ? 'koi' : 'kpv';
   }
   if (/[ӈңӊ]/i.test(word)) return defaultLang === 'sjd' || defaultLang === 'mns' ? defaultLang : 'yrk';
@@ -284,6 +373,8 @@ export function detectLanguageForText(text) {
     if (!lang || lang === UND) continue;
     // «ӧ» alone is shared by Komi, Udmurt and both Maris: no vote for Komi from it
     if (lang === 'kpv' && /ӧ/i.test(tok) && !/і/i.test(tok)) continue;
+    // «і» with no suffix is Komi, Zyrian and Permyak alike: a vote for each, a tie going to Zyrian
+    if (lang === 'kpv' && isMostlyCyrillic(tok) && !komiSuffixLanguage(tok)) { add('kpv', 1); add('koi', 1); continue; }
     // weak evidence counts a third of a vote: for Nenets «э» after a non-dental, paradigm suffixes (Russian loans have
     // those too) and «’» «”» for «ʼ» «ˮ» (a closing quotation mark whose opener is in an earlier sentence looks the same);
     // for Apurinã «ts» alone (Võro, Estonian and Finnish have it: latsi, otsa); for Finnish «ä…ä» alone (Võro has it:
@@ -297,6 +388,13 @@ export function detectLanguageForText(text) {
     // «ӱ» with no labial harmony and no «ҥ» fits Hill Mari as well as Meadow Mari: a vote for each
     if (lang === 'mhr' && /ӱ/i.test(tok) && !/ҥ/i.test(tok) && !/[аы]/i.test(tok) && (tok.match(/[ӱӧ]/gi) || []).length === 1) { add('mhr', 1); add('mrj', 1); continue; }
     add(lang, weak ? 1 / 3 : 1, !weak);
+  }
+  // Komi evidence («і», a Komi suffix): the variety markers (Zyrian «-д» / Permyak «-т» Px2, plurals) decide between kpv and koi
+  if (votes.has('kpv') || votes.has('koi')) {
+    for (const tok of plain.match(/[\p{L}\p{M}]+/gu) || []) {
+      const v = isMostlyCyrillic(tok) ? komiVarietyMarker(tok) : null;
+      if (v) add(v, 1);
+    }
   }
   let best = null;
   for (const [lang, n] of votes) if (!best || n > best[1]) best = [lang, n];
