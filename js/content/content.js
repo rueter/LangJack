@@ -420,8 +420,15 @@
     udm: 'Udmurt',
     sjd: 'Kildin Sami',
     lut: 'Lushootseed',
-    slh: 'Southern Lushootseed'
+    slh: 'Southern Lushootseed',
+    pad: 'Paumarí',
+    sje: 'Pite Sami',
+    ceb: 'Cebuano',
+    bgs: 'Tagabawa'
   };
+
+  // Source languages the card always offers in its selector, even with no dictionary or analyzer entry for them
+  const FLOATER_SELECTABLE_LANGS = ['pad', 'yrk', 'lut', 'slh', 'mns', 'sje', 'ceb', 'bgs'];
 
   function renderCardContent(cardEl, data, shadow) {
     const isPhrase = !!data.isPhrase;
@@ -453,6 +460,11 @@
     // A detected language with no dictionary or analyzer entry (yrk, sjd) still has to show in the selector;
     // otherwise the browser selects the first option (sms) and misreports it
     const langsWithSrc = Object.assign({}, langs);
+    for (const code of FLOATER_SELECTABLE_LANGS) {
+      if (!Object.keys(langsWithSrc).some(c => c.toLowerCase() === code)) {
+        langsWithSrc[code] = EXTRA_SRC_LANG_NAMES[code];
+      }
+    }
     if (!Object.keys(langsWithSrc).some(c => c.toLowerCase() === srcLang.toLowerCase())) {
       langsWithSrc[srcLang] = EXTRA_SRC_LANG_NAMES[srcLang.toLowerCase()] || srcLang;
     }
