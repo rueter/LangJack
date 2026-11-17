@@ -311,15 +311,11 @@ export function detectCyrillicLanguage(word, defaultLang = null) {
   if (/[\u0304\u0305]/.test(word.normalize('NFD'))) return 'mns'; // also the precomposed «ӣ ӯ»
   if (/[ӟӝӥӵ]/i.test(word)) return 'udm';
   if (/ӹ/i.test(word)) return 'mrj';
-  if (/ҥ/i.test(word)) return defaultLang === 'mrj' ? 'mrj' : 'mhr';
+  // «ҥ» and «ӱ» are written in both Maris: the letters cannot decide and LangJack does not guess from labial harmony.
+  // Hill Mari (mrj) unless the user has chosen Meadow Mari (mhr)
+  if (/[ҥӱ]/i.test(word)) return defaultLang === 'mhr' ? 'mhr' : 'mrj';
   if (/[ҋҍӆӎҏ]/i.test(word)) return 'sjd';
   if (/ӓ/i.test(word)) return defaultLang === 'sjd' ? 'sjd' : 'mrj';
-  if (/ӱ/i.test(word)) {
-    // Meadow Mari has labial harmony: ӱ/ӧ with а/ы, or a second rounded ӱ/ӧ, in one word (тӱҥалыныт, ӱдырамаш, тӱня);
-    // Hill Mari does not (ӱ/ӧ words take ӹ ӓ: шӱлӹш, мӱлӓндӹ)
-    if (/[аы]/i.test(word) || (word.match(/[ӱӧ]/gi) || []).length > 1) return 'mhr';
-    return defaultLang === 'mrj' ? 'mrj' : 'mhr';
-  }
   // a Komi suffix that only one variety has (KOMI_SUFFIX_RULES), with or without «ӧ і»
   const komiSuffix = komiSuffixLanguage(word);
   if (komiSuffix) return komiSuffix;
@@ -509,23 +505,12 @@ export function isLushootseedWord(word) {
 }
 
 /**
- * Separates Lushootseed (lut) from Southern Lushootseed (slh). Both share one alphabet, so letters
- * never decide between them; only dialect word-forms in the lexicons do:
- * - lut: applicative «-yid» (kʷədyid, lək̓ʷyid)
- * - slh: «-šid» after a non-l (kʷədšid, lək̓ʷšid); reflexive «-tsut» (huyutsut)
- * - weak cue, only when no lut/slh default is set: lut inchoative «-il» (cəlacil) vs slh «-i» (cəlaci)
+ * Separates Lushootseed (lut) from Southern Lushootseed (slh). Both share one alphabet, so the letters cannot decide
+ * and LangJack does not guess from dialect word-forms: the user knows the variety. slh only when the user has chosen it
+ * (default slh), otherwise lut.
  */
 export function detectLushootseedVariety(word, defaultLang = 'lut') {
-  const w = word.normalize('NFD').toLowerCase();
-
-  if (/yid/.test(w)) return 'lut';
-  if (/[^l\s]šid|tsut/.test(w)) return 'slh';
-
-  if (defaultLang === 'lut' || defaultLang === 'slh') return defaultLang;
-
-  if (/il$/.test(w)) return 'lut';
-  if (w.length >= 5 && /[^aiuəʔ]i$/.test(w) && !/ali$/.test(w)) return 'slh'; // -ali (locative) is shared
-  return 'lut';
+  return defaultLang === 'slh' ? 'slh' : 'lut';
 }
 
 /**
@@ -546,73 +531,153 @@ export function isPlausibleReading(form, reading) {
 /** Languages whose letters, spelled out in detectLanguageForWord, are strong evidence even where LangJack has no analysis. */
 const STRONG_EVIDENCE_LANGS = new Set(['vro', 'yrk', 'sjd', 'mns', 'mhr', 'mrj', 'udm', 'lut', 'slh']);
 
+/** Most time a lookup may wait for analyzers to load or download. */
+export const LOOKUP_BUDGET_MS = 4000;
+
+/** Languages written in Cyrillic; every other language LangJack offers is written in Latin letters. */
+const CYRILLIC_ORTHOGRAPHY_LANGS = new Set([
+  'myv', 'mdf', 'kpv', 'koi', 'udm', 'sjd', 'yrk', 'mhr', 'mrj', 'mns', 'rus', 'ukr', 'bel', 'bul', 'chv', 'bak', 'tat'
+]);
+
+export function isCyrillicOrthographyLang(lang) {
+  return CYRILLIC_ORTHOGRAPHY_LANGS.has(normalizeLangCode(lang || ''));
+}
+
+// Letters that look the same in both scripts (either case): a word made of them says nothing about its script.
+const CYRILLIC_LOOKALIKE_SET = new Set('авсенікјморѕтху');
+const LATIN_LOOKALIKE_SET = new Set('abcehijkmopstxy');
+
 /**
- * Ensures the appropriate language analyzer model is loaded and analyzes the word.
- * Priority #1: Immediately checks the manually set / preferred language first for maximum speed.
- * Priority #2: Only if preferred language yields 0 valid readings does language recognition
- *              and candidate language fallback execute.
+ * Script a word's letters commit it to: 'cyr' when it has a Cyrillic letter with no Latin look-alike (б г д ж з и л п ф ц ч ш ӧ ...),
+ * 'lat' when it has a Latin letter with no Cyrillic look-alike (d f g l n q r v w z, every letter with a diacritic ...),
+ * null when it has only look-alikes (or none). A word with both kinds (stray Latin letters in a Cyrillic source, or the
+ * reverse) goes by the majority, as detectLanguageForWord does.
+ */
+export function wordScript(word) {
+  let cyr = false;
+  let lat = false;
+  for (const ch of (word || '').normalize('NFC')) {
+    const lower = ch.toLowerCase();
+    if (/[Ѐ-ӿ]/.test(ch)) {
+      if (!CYRILLIC_LOOKALIKE_SET.has(lower)) cyr = true;
+    } else if (/[A-Za-zÀ-ɏḀ-ỿɐ-ʯᴀ-ᶿ]/.test(ch)) {
+      if (!LATIN_LOOKALIKE_SET.has(lower)) lat = true;
+    }
+  }
+  if (cyr && lat) return isMostlyCyrillic(word) ? 'cyr' : 'lat';
+  return cyr ? 'cyr' : lat ? 'lat' : null;
+}
+
+/** True when a language's orthography cannot spell the word's committed script (see wordScript). */
+function scriptExcludes(script, lang) {
+  if (!script) return false;
+  return script === 'cyr' ? !isCyrillicOrthographyLang(lang) : isCyrillicOrthographyLang(lang);
+}
+
+/**
+ * Loads an analyzer, waiting at most the time left in the budget. Resolves true when the model is ready in time, false
+ * when it is not (the download goes on in the background and serves the next lookup).
+ */
+export async function ensureModelWithin(lang, ms = LOOKUP_BUDGET_MS) {
+  if (ms <= 0) return analyzerService.hasModelForLanguage(lang);
+  let timer;
+  const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(false), ms); });
+  try {
+    return await Promise.race([
+      analyzerService.ensureModelForLanguage(lang).then(m => !!m, () => false),
+      timeout
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Ensures the appropriate language analyzer model is loaded and analyzes the word, in at most LOOKUP_BUDGET_MS.
+ * The user knows the language, so nothing is guessed beyond what the letters say:
+ * - a word with a Latin letter that has no Cyrillic look-alike never tries a Cyrillic-script language, and a word with a
+ *   Cyrillic letter that has no Latin look-alike never tries a Latin-script one (wordScript)
+ * - letters that decide a language (Skolt Sámi «ʹ ǩ», Võro «q», Nenets «ʼ», Lushootseed «ə ʔ» ...) go straight to its analyzer
+ *   instead of loading the preferred one first
+ * - lut/slh and mhr/mrj, which the letters cannot separate, are lut and mrj unless the user chose the other
+ * Otherwise the preferred language is checked first, then the language the letters point to, then other candidates.
  */
 export async function analyzeWordWithLanguageAssurance(word, preferredLang = 'myv') {
   const cleanWord = (word || '').trim();
   const primaryLang = normalizeLangCode(preferredLang || 'myv');
   if (!cleanWord) return { lang: primaryLang, readings: [] };
 
-  // 1. Priority #1 (Fastest): Test the user's manual/preferred language directly first
-  await analyzerService.ensureModelForLanguage(primaryLang);
-  await dictionaryService.init();
-
-  let readings = analyzerService.analyze_word(cleanWord, primaryLang);
-
-  // If primaryLang produced valid readings with lemma, return immediately (instant 0ms path)
-  if (readings.length > 0 && readings[0].lemma && !readings[0].isGuessed && isPlausibleReading(cleanWord, readings[0])) {
-    return { lang: primaryLang, readings };
-  }
-
-  // If primaryLang has dictionary entries (in FST dictionary or custom TSV dictionary), retain primaryLang
-  const directGlosses = dictionaryService.lookupGlosses(cleanWord, primaryLang, 'all');
-  if (directGlosses && directGlosses.length > 0) {
-    return { lang: primaryLang, readings };
-  }
-
-  // 2. Priority #2 (Fallback Recognition): Try language recognition heuristic if different from primaryLang
+  const deadline = Date.now() + LOOKUP_BUDGET_MS;
+  const timeLeft = () => deadline - Date.now();
+  const script = wordScript(cleanWord);
   const detectedLang = normalizeLangCode(detectLanguageForWord(cleanWord, primaryLang));
+  const good = r => r.length > 0 && r[0].lemma && !r[0].isGuessed && isPlausibleReading(cleanWord, r[0]);
+
+  // Where the letters point to another language than the preferred one with strong evidence, that language comes first,
+  // and a preferred language of the wrong script is never loaded
+  const decisive = detectedLang !== primaryLang &&
+    (STRONG_EVIDENCE_LANGS.has(detectedLang) || (detectedLang === 'sms' && /[ǩǧǯʒʼåʹǥˈẹ]/i.test(cleanWord)));
+  const primaryUsable = !scriptExcludes(script, primaryLang);
+
+  let readings = [];
   let detectedReadings = [];
-  if (detectedLang !== primaryLang) {
-    try {
-      await analyzerService.ensureModelForLanguage(detectedLang);
+  let detectedTried = false;
+
+  const tryDetected = async () => {
+    if (detectedTried || detectedLang === primaryLang || scriptExcludes(script, detectedLang)) return null;
+    detectedTried = true;
+    if (await ensureModelWithin(detectedLang, timeLeft())) {
       detectedReadings = analyzerService.analyze_word(cleanWord, detectedLang);
-      if (detectedReadings.length > 0 && detectedReadings[0].lemma && !detectedReadings[0].isGuessed && isPlausibleReading(cleanWord, detectedReadings[0])) {
-        return { lang: detectedLang, readings: detectedReadings };
-      }
-    } catch (_) {}
+      if (good(detectedReadings)) return { lang: detectedLang, readings: detectedReadings };
+    }
+    return null;
+  };
+
+  if (decisive || !primaryUsable) {
+    const hit = await tryDetected();
+    if (hit) return hit;
   }
 
-  // 3. Priority #3 (Fallback Candidate Search): Test other supported languages
-  // Lushootseed models are only tried for words carrying Lushootseed letters
-  const candidateLangs = (isLushootseedWord(cleanWord) ? ['lut', 'slh'] : ['sms', 'vro', 'myv', 'fin', 'kpv', 'koi', 'apu', 'sme', 'smn', 'mdf', 'udm', 'olo'])
-    .filter(l => l !== primaryLang && l !== detectedLang);
+  // 1. The user's preferred language: instant when its model is loaded
+  let primaryReady = false;
+  if (primaryUsable) {
+    primaryReady = await ensureModelWithin(primaryLang, timeLeft());
+    if (primaryReady) {
+      await dictionaryService.init();
+      readings = analyzerService.analyze_word(cleanWord, primaryLang);
+      if (good(readings)) return { lang: primaryLang, readings };
 
-  const isCyr = /[\u0400-\u04FF]/.test(cleanWord);
+      // a dictionary entry (FST or custom TSV) keeps the preferred language
+      const directGlosses = dictionaryService.lookupGlosses(cleanWord, primaryLang, 'all');
+      if (directGlosses && directGlosses.length > 0) return { lang: primaryLang, readings };
+    }
+  }
+
+  // 2. The language the letters point to
+  const hit = await tryDetected();
+  if (hit) return hit;
+
+  // 3. Other candidates of the word's script, while the budget lasts
+  // Lushootseed models are only tried for words carrying Lushootseed letters
+  const candidateLangs = (isLushootseedWord(cleanWord) ? ['lut'] : ['sms', 'vro', 'myv', 'fin', 'kpv', 'koi', 'apu', 'sme', 'smn', 'mdf', 'udm', 'olo'])
+    .filter(l => l !== primaryLang && l !== detectedLang && !scriptExcludes(script, l));
 
   for (const cand of candidateLangs) {
-    const candIsCyr = ['myv', 'mdf', 'kpv', 'koi', 'udm', 'sjd'].includes(cand);
-    if (isCyr !== candIsCyr && !['sms', 'vro', 'sme', 'smn', 'fin', 'apu', 'olo'].includes(cand)) {
-      continue;
-    }
-
-    try {
-      await analyzerService.ensureModelForLanguage(cand);
-      const candReadings = analyzerService.analyze_word(cleanWord, cand);
-      if (candReadings.length > 0 && candReadings[0].lemma && !candReadings[0].isGuessed && isPlausibleReading(cleanWord, candReadings[0])) {
-        return { lang: cand, readings: candReadings };
-      }
-    } catch (_) {}
+    if (timeLeft() <= 0) break;
+    if (!(await ensureModelWithin(cand, timeLeft()))) continue;
+    const candReadings = analyzerService.analyze_word(cleanWord, cand);
+    if (good(candReadings)) return { lang: cand, readings: candReadings };
   }
 
   // Nothing recognized the word. When its letters point to a language with strong orthographic evidence (Võro «q ü ś»,
   // Nenets «ʼ ˮ», Udmurt «ӥ», ...), report that one: with its guessed readings if its analyzer gave any, none for Tundra
   // Nenets and Kildin Sámi, which have no analyzer in LangJack. Võro «Tõtõstõsündünüq» is vro, not the preferred sms/smn.
   if (detectedLang !== primaryLang && STRONG_EVIDENCE_LANGS.has(detectedLang)) {
+    return { lang: detectedLang, readings: detectedReadings };
+  }
+
+  // A preferred language of the wrong script for this word: report the language the letters say
+  if (!primaryUsable && detectedLang !== primaryLang && !scriptExcludes(script, detectedLang)) {
     return { lang: detectedLang, readings: detectedReadings };
   }
 
@@ -853,10 +918,15 @@ export async function handleShowDictionaryCard(tab, text, srcLang = null, option
     };
   } else {
     // Phrase / Sentence: Tokenize and analyze each word
-    await analyzerService.ensureModelForLanguage(preferredLang);
+    const phraseDeadline = Date.now() + LOOKUP_BUDGET_MS;
+    await ensureModelWithin(preferredLang, LOOKUP_BUDGET_MS);
     await dictionaryService.init();
     let phraseLang = preferredLang;
-    let sentences = await analyzerService.analyzeText(cleanText, phraseLang);
+    // without the model in time the words show without readings
+    const plainTokens = () => [{ tokens: cleanText.split(/\s+/).filter(Boolean).map(form => ({ form, readings: [], isPunct: false, glosses: [] })) }];
+    let sentences = analyzerService.hasModelForLanguage(phraseLang)
+      ? await analyzerService.analyzeText(cleanText, phraseLang)
+      : plainTokens();
     let tokens = sentences[0]?.tokens || [];
 
     // Same rule as for a single word: the preferred language stays unless it does not recognize the phrase and the
@@ -871,10 +941,11 @@ export async function handleShowDictionaryCard(tab, text, srcLang = null, option
       const detected = normalizeLangCode(detectLanguageForText(cleanText) || phraseLang);
       if (detected !== phraseLang) {
         try {
-          phraseLang = detected;
-          await analyzerService.ensureModelForLanguage(phraseLang);
-          sentences = await analyzerService.analyzeText(cleanText, phraseLang);
-          tokens = sentences[0]?.tokens || [];
+          if (await ensureModelWithin(detected, phraseDeadline - Date.now())) {
+            phraseLang = detected;
+            sentences = await analyzerService.analyzeText(cleanText, phraseLang);
+            tokens = sentences[0]?.tokens || [];
+          }
         } catch (_) {
           // keep the tokens of the preferred language; the card still reports the detected one
         }
@@ -1126,10 +1197,11 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
             tabLanguageCache.set(sender.tab.id, srcLang);
           }
           await storageService.setSetting('ui_src_lang', srcLang);
-          await analyzerService.ensureModelForLanguage(srcLang);
+          // at most LOOKUP_BUDGET_MS for the analyzer; a model still downloading serves the next lookup
+          const modelReady = await ensureModelWithin(srcLang, LOOKUP_BUDGET_MS);
           await dictionaryService.init();
 
-          const readings = analyzerService.analyze_word(text, srcLang);
+          const readings = modelReady ? analyzerService.analyze_word(text, srcLang) : [];
           let activeLemma = (message.lemma || '').trim() || readings[0]?.lemma || text;
           activeLemma = stripGuessTags(activeLemma || '') || text;
           const allLemmas = Array.from(new Set([

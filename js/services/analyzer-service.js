@@ -183,6 +183,16 @@ export class AnalyzerService {
    */
   async ensureModelForLanguage(lang) {
     const cleanLang = normalizeLangCode(lang || 'myv');
+    // one load per language at a time: a lookup that gave up waiting leaves the download running for the next one
+    if (!this.loadingModels) this.loadingModels = new Map();
+    if (this.loadingModels.has(cleanLang)) return this.loadingModels.get(cleanLang);
+    const loading = this._loadModelForLanguage(cleanLang).finally(() => this.loadingModels.delete(cleanLang));
+    this.loadingModels.set(cleanLang, loading);
+    return loading;
+  }
+
+  async _loadModelForLanguage(lang) {
+    const cleanLang = normalizeLangCode(lang || 'myv');
 
     // 1. Check in-memory cache
     if (this.models.has(cleanLang)) {
@@ -341,7 +351,15 @@ export class AnalyzerService {
         const bustUrl = downloadUrl.includes('?')
           ? `${downloadUrl}&_t=${Date.now()}`
           : `${downloadUrl}?_t=${Date.now()}`;
-        const r = await fetch(bustUrl);
+        // a mirror that sends no headers within 4 s is skipped; the timer ends once they arrive, so a big model can finish
+        const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timer = ctl ? setTimeout(() => ctl.abort(), 4000) : null;
+        let r;
+        try {
+          r = await fetch(bustUrl, ctl ? { signal: ctl.signal } : undefined);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
         if (r.ok) {
           resp = r;
           successfulUrl = downloadUrl;

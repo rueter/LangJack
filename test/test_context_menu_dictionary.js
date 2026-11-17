@@ -496,14 +496,15 @@ for (const w of ['dxʷləšucid', 'bədaʔ', 'x̌aʔx̌aʔ', 'q̓ʷəlil', 'sq̓
 }
 // «č, š, ǰ» must not route Lushootseed to Sámi, nor «ts» to Apurinã
 assert.strictEqual(detectLanguageForWord('č̓ač̓as'), 'lut', '«č̓» with comma above must be Lushootseed, not Sámi');
-assert.strictEqual(detectLanguageForWord('huyutsut', 'lut'), 'slh', 'Reflexive «-tsut» must be Southern Lushootseed, not Apurinã');
+assert.strictEqual(detectLanguageForWord('huyutsut', 'lut'), 'lut', 'No guessing from «-tsut»: lut unless the user chose slh');
+assert.strictEqual(detectLanguageForWord('huyutsut', 'slh'), 'slh', '«-tsut» with the user\'s slh stays slh, not Apurinã');
 // Dialect forms: lut «-yid» vs slh «-šid», lut «-il» vs slh «-i»
 assert.strictEqual(detectLanguageForWord('lək̓ʷyid'), 'lut', 'Applicative «-yid» indicates Lushootseed (lut)');
-assert.strictEqual(detectLanguageForWord('lək̓ʷšid', 'lut'), 'slh', 'Applicative «-šid» indicates Southern Lushootseed (slh)');
+assert.strictEqual(detectLanguageForWord('lək̓ʷšid', 'lut'), 'lut', 'No guessing from «-šid»: lut');
 // lut and slh share one alphabet: letters alone never switch between them
 assert.strictEqual(detectLanguageForWord('t̓iq̓ʷil', 'slh'), 'slh', '«t̓» (U+0313) does not switch slh to lut');
 assert.strictEqual(detectLanguageForWord('t̕iq̓ʷi', 'lut'), 'lut', '«t̕» (U+0315) does not switch lut to slh');
-assert.strictEqual(detectLanguageForWord('cəlaci'), 'slh', 'Inchoative «-i» (cəlacil) indicates Southern Lushootseed (slh)');
+assert.strictEqual(detectLanguageForWord('cəlaci'), 'lut', 'lut vs slh is lut without a user choice');
 assert.strictEqual(detectLanguageForWord('cəlacil'), 'lut', 'Inchoative «-il» indicates Lushootseed (lut)');
 // Shared forms keep a lut/slh default, also when the word has no Lushootseed-only letter
 assert.strictEqual(detectLanguageForWord('sɬali', 'lut'), 'lut', 'Shared form keeps default lut');
@@ -515,7 +516,7 @@ assert.strictEqual(detectLanguageForWord('sƚali', 'slh'), 'slh', '«ƚ» keeps 
 assert.strictEqual(detectLanguageForWord('sƚali', 'lut'), 'lut', '«ƚ» does not switch lut to slh');
 assert.strictEqual(detectLanguageForWord('ɫalil'), 'lut', '«ɫ» for «ɬ» is recognized as Lushootseed');
 // Precomposed «š» (U+0161) and «ǰ» (U+01F0) work like their decomposed forms
-assert.strictEqual(detectLanguageForWord('lək̓ʷšid', 'lut'), 'slh', 'Precomposed «š» in «-šid» indicates slh');
+assert.strictEqual(detectLanguageForWord('lək̓ʷšid', 'slh'), 'slh', 'Precomposed «š» keeps the user\'s slh');
 assert.strictEqual(detectLanguageForWord('ǰəsəd'), 'lut', 'Precomposed «ǰ» word is Lushootseed');
 console.log('✓ Lushootseed (lut) and Southern Lushootseed (slh) correctly recognized and separated');
 
@@ -652,11 +653,13 @@ assert.strictEqual(detectLanguageForWord('шӱлӹш'), 'mrj', '«ӹ» is Hill M
 assert.strictEqual(detectLanguageForWord('мӱлӓндӹ', 'mhr'), 'mrj', '«ӓ ӹ» is Hill Mari even with an mhr default');
 assert.strictEqual(detectLanguageForWord('ӓвӓ'), 'mrj', '«ӓ» alone is Hill Mari');
 assert.strictEqual(detectLanguageForWord('ӓвӓ', 'sjd'), 'sjd', '«ӓ» alone keeps an sjd default');
-assert.strictEqual(detectLanguageForWord('тӱҥалыныт'), 'mhr', '«ҥ» is Meadow Mari');
-assert.strictEqual(detectLanguageForWord('ӱдырамаш', 'mrj'), 'mhr', 'ӱ with а/ы: labial harmony, Meadow Mari even with an mrj default');
-assert.strictEqual(detectLanguageForWord('тӱня'), 'mhr');
+assert.strictEqual(detectLanguageForWord('тӱҥалыныт'), 'mrj', '«ҥ» is in both Maris: mrj unless the user chose mhr');
+assert.strictEqual(detectLanguageForWord('тӱҥалыныт', 'mhr'), 'mhr', '«ҥ» with the user\'s mhr stays mhr');
+assert.strictEqual(detectLanguageForWord('ӱдырамаш', 'mrj'), 'mrj', 'No guessing from labial harmony: mrj');
+assert.strictEqual(detectLanguageForWord('тӱня'), 'mrj');
 assert.strictEqual(detectLanguageForWord('шӱм', 'mrj'), 'mrj', '«ӱ» alone keeps an mrj default');
-assert.strictEqual(detectLanguageForWord('шӱм'), 'mhr', '«ӱ» alone is Meadow Mari without a default');
+assert.strictEqual(detectLanguageForWord('шӱм'), 'mrj', '«ӱ» alone is mrj unless the user chose mhr');
+assert.strictEqual(detectLanguageForWord('шӱм', 'mhr'), 'mhr', '«ӱ» alone keeps an mhr default');
 assert.strictEqual(detectLanguageForWord('наӈ', 'mrj'), 'yrk', '«ӈ» is not Mari (they write «ҥ»)');
 assert.strictEqual(detectLanguageForWord('о̄лнэ'), 'mns', 'macron vowel (U+0304) is Mansi');
 assert.strictEqual(detectLanguageForWord('ӣсус'), 'mns', 'precomposed «ӣ» is Mansi');
@@ -666,11 +669,11 @@ assert.strictEqual(detectLanguageForWord('наӈ', 'mns'), 'mns', '«ӈ» alone 
 assert.strictEqual(detectLanguageForWord('наӈ'), 'yrk', '«ӈ» alone without a default goes to Nenets');
 assert.strictEqual(detectLanguageForText('Ялпыӈ кол а̄ви ултта тотыглаӈкве'), 'mns', 'Mansi «ӈ» with one macron word');
 assert.strictEqual(detectLanguageForText('Наӈ āнум вуськасаслын'), 'mns');
-assert.strictEqual(detectLanguageForText('Исус Левим ӱжеш'), 'mhr', '«ӱ» alone ties mhr and mrj, mhr first');
+assert.strictEqual(detectLanguageForText('Исус Левим ӱжеш'), 'mrj', '«ӱ» alone: mrj');
 assert.strictEqual(detectLanguageForText('Кӱн пӹлӹшӹжӹ колышташ улы'), 'mrj', '«ӹ» outweighs a shared «ӱ»');
 assert.strictEqual(detectLanguageForText('Нош Астинь эксэй кышнолэн лыктэмез ӧз поты'), null, 'shared «ӧ» alone gives no vote for Komi');
 assert.strictEqual(detectLanguageForText('Нош Астинь вордӥськем ӧз поты'), 'udm');
-assert.strictEqual(detectLanguageForText('Мый ӱдырамашым тӱнян ӧрдыжеш'), 'mhr');
+assert.strictEqual(detectLanguageForText('Мый ӱдырамашым тӱнян ӧрдыжеш'), 'mrj');
 assert.strictEqual(detectLanguageForText('Ӧз мун, мунісӧ'), 'koi', '-ісӧ is Permyak');
 assert.strictEqual(detectLanguageForText('Ӧз мун, сійӧ'), 'kpv', 'і alone: Komi, variety open, a tie goes to Zyrian');
 // «’» «”» as quotation marks around a Nenets-free sentence do not make it Nenets: an unpaired closing ” is weak evidence
@@ -715,7 +718,7 @@ assert.strictEqual(detectLanguageForWord('oll\''), 'vro', 'Võro apostrophe at t
 assert.strictEqual(detectLanguageForText('Дӓ мӹнь рисуен пушым.'), 'mrj');
 assert.strictEqual(detectLanguageForText('Тӹдӹ техеньӹ ылын:'), 'mrj');
 assert.strictEqual(detectLanguageForWord('мӹньӹм', 'mhr'), 'mrj');
-assert.strictEqual(detectLanguageForText('- А кӱ техень географ?'), 'mhr', '«ӱ» alone ties mhr and mrj, mhr first');
+assert.strictEqual(detectLanguageForText('- А кӱ техень географ?'), 'mrj', '«ӱ» alone: mrj');
 // Komi-Zyrian and Komi-Permyak by suffix (KOMI_SUFFIX_RULES); Udmurt, Meadow Mari and Russian endings do not count
 assert.strictEqual(komiSuffixLanguage('мунісны'), 'kpv');
 assert.strictEqual(komiSuffixLanguage('мунісӧ'), 'koi');
