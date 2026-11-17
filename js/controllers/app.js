@@ -3425,7 +3425,8 @@ export class WorkbenchApp {
       const tdLang = document.createElement('td');
       const langBadge = document.createElement('span');
       langBadge.className = 'gloss-lang-badge';
-      langBadge.textContent = (e.tgt_lang || '').toUpperCase();
+      langBadge.textContent = `${(e.src_lang || '?').toUpperCase()} → ${(e.tgt_lang || '').toUpperCase()}`;
+      langBadge.title = `The lemma "${e.lemma}" is in ${getLangDisplayName(e.src_lang)}; the gloss "${e.gloss}" is in ${getLangDisplayName(e.tgt_lang)}`;
       tdLang.appendChild(langBadge);
 
       const tdDel = document.createElement('td');
@@ -3534,13 +3535,44 @@ export class WorkbenchApp {
   }
 
   async handleAddCustomEntry() {
-    const lemma = prompt('Enter lemma / headword (e.g. вастома):');
+    // Two languages: the one the lemma is written in, and the one the gloss is written in. Each is asked by name, with the
+    // word it applies to, so the two cannot be confused; cancel at any step saves nothing.
+    const askLangCode = (message, suggestion) => {
+      let code = '';
+      let proposed = suggestion;
+      while (!code) {
+        const answer = prompt(message, proposed);
+        if (answer === null) return null;
+        const clean = normalizeLangCode(answer.trim());
+        if (/^[a-z]{3}$/.test(clean)) code = clean;
+        proposed = answer;
+        message = `"${answer.trim()}" is not a 3-letter ISO 639-3 code. ${message.replace(/^"[^"]*" is not a 3-letter ISO 639-3 code\. /, '')}`;
+      }
+      return code;
+    };
+    const langLabel = (code) => `${getLangDisplayName(code)} (${code})`;
+
+    const lemmaLang = askLangCode(
+      'LEMMA LANGUAGE (step 1 of 4)\n\n' +
+      'In which language is the LEMMA (the headword you will type next) written?\n' +
+      'Enter its 3-letter ISO 639-3 code, for example: myv (Erzya), sms (Skolt Sami), apu (Apurina), lut (Lushootseed), fin (Finnish).',
+      this.srcLang
+    );
+    if (!lemmaLang) return;
+
+    const lemma = prompt(`LEMMA (step 2 of 4)\n\nType the lemma (headword) in ${langLabel(lemmaLang)}, for example вастома:`);
     if (!lemma || !lemma.trim()) return;
 
-    const gloss = prompt(`Enter gloss for "${lemma}" (e.g. meeting):`);
-    if (!gloss || !gloss.trim()) return;
+    const glossLang = askLangCode(
+      `GLOSS LANGUAGE (step 3 of 4)\n\nIn which language will the GLOSS (the translation of "${lemma.trim()}") be written?\n` +
+      'Enter its 3-letter ISO 639-3 code, for example: eng (English), fin (Finnish), rus (Russian), por (Portuguese).',
+      this.targetLang || 'eng'
+    );
+    if (!glossLang) return;
 
-    const tgtLang = prompt('Enter 3-letter target ISO language code (e.g. eng, fin, rus):', this.targetLang || 'eng');
+    const gloss = prompt(`GLOSS (step 4 of 4)\n\nType the gloss (translation) of the ${langLabel(lemmaLang)} lemma "${lemma.trim()}", written in ${langLabel(glossLang)}, for example meeting:`);
+    if (!gloss || !gloss.trim()) return;
+    const tgtLang = glossLang;
 
     // Both parts of speech are required: ask until each is one of the known ones, or give up (cancel) without saving
     const askPos = (what, who) => {
@@ -3554,19 +3586,19 @@ export class WorkbenchApp {
       }
       return pos;
     };
-    const pos = askPos('the source word', lemma.trim());
-    const tgtPos = pos ? askPos('the target gloss', gloss.trim()) : null;
+    const pos = askPos(`the ${langLabel(lemmaLang)} lemma`, lemma.trim());
+    const tgtPos = pos ? askPos(`the ${langLabel(glossLang)} gloss`, gloss.trim()) : null;
     if (!pos || !tgtPos) {
       this.showToast('Entry not saved: a part of speech is required for both the source word and the target gloss.', 'info');
       return;
     }
 
     await dictionaryService.addCustomEntry({
-      src_lang: this.srcLang,
+      src_lang: lemmaLang,
       lemma: lemma.trim(),
       pos,
       tgt_pos: tgtPos,
-      tgt_lang: (tgtLang || 'eng').trim().toLowerCase(),
+      tgt_lang: tgtLang,
       gloss: gloss.trim(),
       notes: 'Manual entry'
     }, { requirePos: true });
@@ -3574,7 +3606,7 @@ export class WorkbenchApp {
     await this.renderCustomEntriesTable();
     this.syncSourceLanguagesFromDictionary();
     this.relookupAllGlosses();
-    this.showToast(`Added custom entry for "${lemma}"!`, 'success');
+    this.showToast(`Added: ${langLabel(lemmaLang)} "${lemma.trim()}" → ${langLabel(glossLang)} "${gloss.trim()}"`, 'success');
   }
 
   async handleImportDictionary() {
