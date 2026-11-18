@@ -36,14 +36,14 @@ export class Cg3Service {
     const i = list.findIndex(g => g.name === name);
     if (i >= 0) list[i] = entry; else list.push(entry);
     await storageService.setSetting(key(lang), list);
-    this._engines.delete(lang);
+    this._engines.delete(lang); this._engines.delete(lang + ':t');
     return list;
   }
 
   async removeGrammar(lang, name) {
     const list = (await this.getGrammars(lang)).filter(g => g.name !== name);
     await storageService.setSetting(key(lang), list);
-    this._engines.delete(lang);
+    this._engines.delete(lang); this._engines.delete(lang + ':t');
     return list;
   }
 
@@ -51,15 +51,15 @@ export class Cg3Service {
     return (await this.getGrammars(lang)).length > 0;
   }
 
-  async _engine(lang) {
+  async _engine(lang, trace = false) {
     const grammars = await this.getGrammars(lang);
     if (!grammars.length) return null;
-    const signature = grammars.map(g => `${g.name}:${g.timestamp}`).join('|');
-    const cached = this._engines.get(lang);
+    const signature = grammars.map(g => `${g.name}:${g.timestamp}`).join('|') + (trace ? '|trace' : '');
+    const cached = this._engines.get(lang + (trace ? ':t' : ''));
     if (cached && cached.signature === signature) return cached.cg;
     const { Cg } = await import('../lib/jscg3/index.js');
-    const cg = new Cg(grammars.map(g => g.text), { names: grammars.map(g => g.name) });
-    this._engines.set(lang, { signature, cg });
+    const cg = new Cg(grammars.map(g => g.text), { names: grammars.map(g => g.name), trace });
+    this._engines.set(lang + (trace ? ':t' : ''), { signature, cg });
     return cg;
   }
 
@@ -67,10 +67,11 @@ export class Cg3Service {
    * Runs the language's grammars over analyzed sentences, one sentence at a time.
    * @param {Array<{tokens: Array<Object>}>} sentences  analyzerService.analyzeText output
    * @param {string} lang
+   * @param {{trace?: boolean}} [options]  trace: like vislcg3 -t, each reading carries the rules that selected or mapped it
    * @returns {Promise<string|null>} the CG stream after disambiguation, or null when the language has no grammar
    */
-  async disambiguate(sentences, lang) {
-    const cg = await this._engine(lang);
+  async disambiguate(sentences, lang, { trace = false } = {}) {
+    const cg = await this._engine(lang, trace);
     if (!cg) return null;
     const out = [];
     for (const sent of sentences || []) {

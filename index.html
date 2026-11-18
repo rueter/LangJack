@@ -339,6 +339,14 @@
           </div>
         </div>
 
+        <!-- Options of export tab 5 (CG3), shown only there -->
+        <div id="cg3Options" style="display: none; margin-bottom: 8px; font-size: 13px;">
+          <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="As vislcg3 -t: every reading carries the rules that selected or mapped it, as RULE:line number in the grammar file (for example SELECT:123)">
+            <input type="checkbox" id="cg3TraceCheckbox">
+            Trace (-t): show which rule acted on each reading
+          </label>
+        </div>
+
         <pre id="exportPreview" class="export-preview-box">(No analysis output yet. Click Analyze above.)</pre>
 
         <div class="export-actions">

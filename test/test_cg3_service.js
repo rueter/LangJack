@@ -19,6 +19,11 @@ const xs = [{ tokens: [{ form: 'a', readings: [r('a+V+Sg1'), r('a+V+Pl1')], gues
 const out = await cg3Service.disambiguate(xs, 'xx');
 assert(out.includes('Sg1') && !out.includes('Pl1'), out);
 
+// trace (-t): the rule that selected the reading is named, as RULE:line
+const tr = await cg3Service.disambiguate(xs, 'xx', { trace: true });
+assert(/Sg1 <W:0\.0> SELECT:\d+/.test(tr), tr);
+assert(!/SELECT:\d+/.test(out));
+
 // replacing a grammar of the same name keeps one entry; removing empties
 await cg3Service.saveGrammar('xx', 'g.cg3', 'DELIMITERS = "<.>" ;\n');
 assert.strictEqual((await cg3Service.getGrammars('xx')).length, 1);

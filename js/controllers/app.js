@@ -487,6 +487,15 @@ export class WorkbenchApp {
         this.updateExports();
       });
     });
+    this.cg3TraceCheckbox = document.getElementById('cg3TraceCheckbox');
+    this.cg3TraceCheckbox?.addEventListener('change', () => {
+      storageService.setSetting('ui_cg3_trace', this.cg3TraceCheckbox.checked);
+      this.updateExports();
+    });
+    storageService.getSetting('ui_cg3_trace', false).then(v => {
+      if (this.cg3TraceCheckbox) this.cg3TraceCheckbox.checked = !!v;
+      if (this.activeExportTab === 'cg3') this.updateExports();
+    });
 
     this.renewConlluBtn?.addEventListener('click', () => this.renewAllConlluReadings());
     this.copyExportBtn.addEventListener('click', () => this.handleCopyExport());
@@ -1911,6 +1920,8 @@ export class WorkbenchApp {
   // Multi-format export updates (Requirement 5)
   updateExports() {
     let output = '';
+    const cg3Options = document.getElementById('cg3Options');
+    if (cg3Options) cg3Options.style.display = this.activeExportTab === 'cg3' ? 'block' : 'none';
 
     if (this.activeExportTab === 'conllu') {
       if (this.exportScope === 'accumulated' && treebankService.getCount() > 0) {
@@ -1947,7 +1958,7 @@ export class WorkbenchApp {
     }
     show('(Running the CG-3 grammar...)');
     try {
-      show((await cg3Service.disambiguate(this.sentences, lang)) || '');
+      show((await cg3Service.disambiguate(this.sentences, lang, { trace: !!this.cg3TraceCheckbox?.checked })) || '');
     } catch (err) {
       console.error('CG-3 error:', err);
       show(`(CG-3 grammar error: ${err.message})`);
@@ -2016,7 +2027,7 @@ export class WorkbenchApp {
       const text = this.exportPreview ? this.exportPreview.textContent : '';
       if (!text || text.startsWith('(')) return; // a placeholder or an error message, not an output
       content = text + '\n';
-      filename = `cg3_disambiguated_${this.srcLang}.txt`;
+      filename = `cg3_disambiguated_${this.srcLang}${this.cg3TraceCheckbox?.checked ? '_trace' : ''}.txt`;
     }
 
     if (!content) return;
