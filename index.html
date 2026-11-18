@@ -340,10 +340,18 @@
         </div>
 
         <!-- Options of export tab 5 (CG3), shown only there -->
-        <div id="cg3Options" style="display: none; margin-bottom: 8px; font-size: 13px;">
-          <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="As vislcg3 -t: every reading carries the rules that selected or mapped it, as RULE:line number in the grammar file (for example SELECT:123)">
+        <div id="cg3Options" style="display: none; margin-bottom: 8px; font-size: 13px; gap: 6px 18px; flex-wrap: wrap; align-items: center;">
+          <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="As vislcg3 -t: every reading carries the rules that selected, mapped or changed it, as RULE:line number in the grammar file (for example SELECT:123). A REMOVE rule leaves nothing on the readings that stay; tick -p to see what it removed.">
             <input type="checkbox" id="cg3TraceCheckbox">
-            Trace (-t): show which rule acted on each reading
+            Trace (-t): rule that acted on each reading
+          </label>
+          <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="As vislcg3 -p: readings that a rule removed stay in the output, with a ; in front (and, with -t, the rule that removed them)">
+            <input type="checkbox" id="cg3DeletedCheckbox">
+            Removed readings (-p)
+          </label>
+          <label id="cg3StageLabel" style="display: none; align-items: center; gap: 6px;" title="With several grammar files, show the output after this one (-t and -p then describe its rules). The files run in the order disambiguator, functions, dependency.">
+            Output after:
+            <select id="cg3StageSelect" style="font-size: 12px; padding: 2px 4px;"></select>
           </label>
         </div>
 
@@ -422,11 +430,11 @@
           </div>
           <!-- Constraint Grammar disambiguator for the language chosen above (run by @rueter/jscg3, kept only in this browser) -->
           <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <label class="btn btn-secondary btn-sm" style="cursor: pointer;" title="Upload GiellaLT's src/cg3/disambiguator.cg3 (the .cg3 source, not the compiled .bin) for the language chosen in the list above. Several files run in the order you add them (disambiguator, functions, dependency).">
+            <label class="btn btn-secondary btn-sm" style="cursor: pointer;" title="Upload GiellaLT's src/cg3/disambiguator.cg3 (the .cg3 source, not the compiled .bin) for the language chosen in the list above. You can add functions.cg3 and dependency.cg3 too: the files always run in the order disambiguator, functions, dependency.">
               📁 Upload disambiguator.cg3
               <input type="file" id="uploadCg3Input" accept=".cg3" multiple style="display: none;">
             </label>
-            <span style="font-size: 11px; color: var(--text-muted);">for the language chosen in the list above; used by export tab 5 (CG3)</span>
+            <span style="font-size: 11px; color: var(--text-muted);">for the language chosen in the list above, or the one a file name starts with (myv_disambiguator.cg3); used by export tab 5 (CG3)</span>
           </div>
           <div id="uploadedCg3List" style="margin-top: 6px; font-size: 12px;"></div>
           <!-- Download Progress Indicator -->

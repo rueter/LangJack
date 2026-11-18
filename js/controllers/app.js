@@ -13,7 +13,7 @@ import { dictionaryService, splitGlossItem, CUSTOM_POS_CHOICES, normalizeCustomP
 import { treebankService } from '../services/treebank-service.js';
 import { ConlluExporter } from '../services/conllu-exporter.js';
 import { HfstRawExporter } from '../services/hfst-raw-exporter.js';
-import { cg3Service } from '../services/cg3-service.js';
+import { cg3Service, splitLangPrefix } from '../services/cg3-service.js';
 import { InterlinearExporter } from '../services/interlinear-exporter.js';
 import { VerddExporter } from '../services/verdd-exporter.js';
 import { storageService } from '../services/storage-service.js';
@@ -488,12 +488,20 @@ export class WorkbenchApp {
       });
     });
     this.cg3TraceCheckbox = document.getElementById('cg3TraceCheckbox');
+    this.cg3DeletedCheckbox = document.getElementById('cg3DeletedCheckbox');
+    this.cg3StageSelect = document.getElementById('cg3StageSelect');
     this.cg3TraceCheckbox?.addEventListener('change', () => {
       storageService.setSetting('ui_cg3_trace', this.cg3TraceCheckbox.checked);
       this.updateExports();
     });
-    storageService.getSetting('ui_cg3_trace', false).then(v => {
-      if (this.cg3TraceCheckbox) this.cg3TraceCheckbox.checked = !!v;
+    this.cg3DeletedCheckbox?.addEventListener('change', () => {
+      storageService.setSetting('ui_cg3_deleted', this.cg3DeletedCheckbox.checked);
+      this.updateExports();
+    });
+    this.cg3StageSelect?.addEventListener('change', () => this.updateExports());
+    Promise.all([storageService.getSetting('ui_cg3_trace', false), storageService.getSetting('ui_cg3_deleted', false)]).then(([t, d]) => {
+      if (this.cg3TraceCheckbox) this.cg3TraceCheckbox.checked = !!t;
+      if (this.cg3DeletedCheckbox) this.cg3DeletedCheckbox.checked = !!d;
       if (this.activeExportTab === 'cg3') this.updateExports();
     });
 
@@ -1921,7 +1929,7 @@ export class WorkbenchApp {
   updateExports() {
     let output = '';
     const cg3Options = document.getElementById('cg3Options');
-    if (cg3Options) cg3Options.style.display = this.activeExportTab === 'cg3' ? 'block' : 'none';
+    if (cg3Options) cg3Options.style.display = this.activeExportTab === 'cg3' ? 'flex' : 'none';
 
     if (this.activeExportTab === 'conllu') {
       if (this.exportScope === 'accumulated' && treebankService.getCount() > 0) {
@@ -1945,6 +1953,29 @@ export class WorkbenchApp {
     }
   }
 
+  /**
+   * Fills "Output after:" with the language's grammar files (shown only when there are several) and returns the chosen
+   * file name, or null for "all of them".
+   */
+  async syncCg3StageSelect(lang) {
+    const select = this.cg3StageSelect;
+    const label = document.getElementById('cg3StageLabel');
+    const grammars = await cg3Service.getGrammars(lang);
+    if (!select || !label) return null;
+    label.style.display = grammars.length > 1 ? 'inline-flex' : 'none';
+    if (grammars.length < 2) return null;
+    const wanted = select.value;
+    select.replaceChildren();
+    grammars.forEach((g, i) => {
+      const opt = document.createElement('option');
+      opt.value = i === grammars.length - 1 ? '' : g.name; // the last one is "everything"
+      opt.textContent = i === grammars.length - 1 ? `${g.name} (all grammars)` : g.name;
+      select.appendChild(opt);
+    });
+    if ([...select.options].some(o => o.value === wanted)) select.value = wanted;
+    return select.value || null;
+  }
+
   /** Export tab 5: the raw analyses after the uploaded CG-3 grammar(s) of the source language have run. */
   async updateCg3Export() {
     if (!this.exportPreview) return;
@@ -1956,9 +1987,14 @@ export class WorkbenchApp {
       show(`(No CG-3 grammar for ${lang} in this browser. Open Manage HFST Models & Dictionaries, choose ${lang} and use "Upload disambiguator.cg3".)`);
       return;
     }
+    const upTo = await this.syncCg3StageSelect(lang);
     show('(Running the CG-3 grammar...)');
     try {
-      show((await cg3Service.disambiguate(this.sentences, lang, { trace: !!this.cg3TraceCheckbox?.checked })) || '');
+      show((await cg3Service.disambiguate(this.sentences, lang, {
+        trace: !!this.cg3TraceCheckbox?.checked,
+        showDeleted: !!this.cg3DeletedCheckbox?.checked,
+        upTo
+      })) || '');
     } catch (err) {
       console.error('CG-3 error:', err);
       show(`(CG-3 grammar error: ${err.message})`);
@@ -2027,7 +2063,7 @@ export class WorkbenchApp {
       const text = this.exportPreview ? this.exportPreview.textContent : '';
       if (!text || text.startsWith('(')) return; // a placeholder or an error message, not an output
       content = text + '\n';
-      filename = `cg3_disambiguated_${this.srcLang}${this.cg3TraceCheckbox?.checked ? '_trace' : ''}.txt`;
+      filename = `cg3_disambiguated_${this.srcLang}${this.cg3TraceCheckbox?.checked ? '_trace' : ''}${this.cg3DeletedCheckbox?.checked ? '_p' : ''}.txt`;
     }
 
     if (!content) return;
@@ -3828,19 +3864,20 @@ export class WorkbenchApp {
     const files = Array.from(e.target.files || []);
     e.target.value = ''; // the same file can be chosen again
     if (!files.length) return;
-    const lang = this.modelPanelLang();
+    const panelLang = this.modelPanelLang();
     const added = [];
     for (const file of files) {
+      const lang = splitLangPrefix(file.name).lang ? normalizeLangCode(splitLangPrefix(file.name).lang) : panelLang;
       try {
         await cg3Service.saveGrammar(lang, file.name, await file.text());
-        added.push(file.name);
+        added.push(`${file.name} → ${lang}`);
       } catch (err) {
         this.showToast(`Could not load "${file.name}": ${err.message}`, 'error');
       }
     }
     await this.renderUploadedCg3();
     if (added.length) {
-      this.showToast(`Loaded ${added.join(', ')} for ${lang}. Use export tab 5 (CG3) to see the disambiguated output.`, 'success');
+      this.showToast(`Loaded ${added.join(', ')}. Use export tab 5 (CG3) to see the disambiguated output.`, 'success');
       if (this.activeExportTab === 'cg3') this.updateExports();
     }
   }
