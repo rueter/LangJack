@@ -241,7 +241,9 @@ build_package() {
   )
 
   # 5. Verify archive
-  if ! unzip -l "$OUT_ABS" | grep -q " manifest.json$"; then
+  # read the whole listing first: "grep -q" quits at the first hit, unzip then dies of SIGPIPE and pipefail calls that a failure
+  ZIP_LISTING=$(unzip -l "$OUT_ABS")
+  if ! grep -q " manifest.json$" <<< "$ZIP_LISTING"; then
     echo "❌ Verification Failed: manifest.json missing from root of $OUT_PATH" >&2
     rm -rf "$STAGE_DIR"
     exit 1
@@ -342,7 +344,8 @@ build_pwa_package() {
   )
 
   # 5. Verify archive
-  if ! unzip -l "$OUT_ABS" | grep -q " manifest.webmanifest$"; then
+  ZIP_LISTING=$(unzip -l "$OUT_ABS")
+  if ! grep -q " manifest.webmanifest$" <<< "$ZIP_LISTING"; then
     echo "❌ Verification Failed: manifest.webmanifest missing from root of $OUT_PATH" >&2
     rm -rf "$STAGE_DIR"
     exit 1
