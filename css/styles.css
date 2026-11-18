@@ -676,7 +676,7 @@ body {
 
 .reading-select {
   width: 100%;
-  font-size: 12px;
+  font-size: 12px; /* same size as the Base Lemma box; monospace, with "LangJack Glyphs" (Gentium) only for letters the system font lacks */
   font-family: var(--font-mono);
   padding: 5px 6px;
   border-radius: var(--radius-sm);
@@ -969,7 +969,7 @@ body {
   min-height: 220px;
   max-height: 400px;
   padding: 14px;
-  font-family: var(--font-mono);
+  font-family: var(--font-mono); /* monospace keeps the CoNLL-U columns aligned; "LangJack Glyphs" (Gentium) supplies only the missing lut/slh letters */
   font-size: 12px;
   line-height: 1.5;
   background: #0f172a;
@@ -1824,7 +1824,7 @@ body {
 .ci-changed { background: var(--success-light); }
 .ci-warn { color: #b45309; font-size: 12px; }
 .ci-h { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
-.ci-pre { max-height: 220px; overflow: auto; font-size: 11px; }
+.ci-pre { max-height: 220px; overflow: auto; font-size: 12px; }
 .ci-line { white-space: pre; }
 .ci-line-added { background: var(--success-light); }
 .ci-line-removed { background: var(--danger-light); }
