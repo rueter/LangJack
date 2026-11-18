@@ -80,6 +80,7 @@
         "icons/*",
         "index.html",
         "css/*",
+        "fonts/*",
         "js/*"
       ],
       "matches": [

@@ -4,13 +4,14 @@
  */
 
 // Bump the suffix on every deploy so returning visitors receive the new files.
-const CACHE_NAME = 'langjack-pwa-v1.0.1-r15';
+const CACHE_NAME = 'langjack-pwa-v1.0.1-r16';
 
 const PRECACHE_ASSETS = [
   './',
   'index.html',
   'manifest.webmanifest',
   'css/styles.css',
+  'fonts/GentiumPlus-R.ttf',
   'icons/icon16.png',
   'icons/icon32.png',
   'icons/icon48.png',

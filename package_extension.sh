@@ -179,6 +179,9 @@ build_package() {
   mkdir -p "$STAGE_DIR/css"
   cp css/styles.css "$STAGE_DIR/css/"
 
+  mkdir -p "$STAGE_DIR/fonts"
+  cp fonts/* "$STAGE_DIR/fonts/"
+
   mkdir -p "$STAGE_DIR/icons"
   cp icons/*.png "$STAGE_DIR/icons/"
 
@@ -276,6 +279,9 @@ build_pwa_package() {
 
   mkdir -p "$STAGE_DIR/css"
   cp css/styles.css "$STAGE_DIR/css/"
+
+  mkdir -p "$STAGE_DIR/fonts"
+  cp fonts/* "$STAGE_DIR/fonts/"
 
   mkdir -p "$STAGE_DIR/icons"
   cp icons/*.png "$STAGE_DIR/icons/"

@@ -327,10 +327,37 @@
   }
 
   /**
+   * Fallback font for Lushootseed letters. Android fonts (Chrome, Kiwi) lack ƛ ɬ ə ʔ ʷ and the combining comma / caron and show
+   * boxes. A font declared inside the card's Shadow DOM is ignored, and a page's CSP may block a font URL, so the bundled
+   * Gentium Plus (SIL Open Font License) is read as bytes and added to document.fonts, which the card's text uses as
+   * "LangJack Glyphs". Its unicode-range keeps it to those letters; it is read only when a card shows one.
+   */
+  const GLYPH_FONT_LETTERS = /[\u019A\u019B\u01DD\u026B\u026C\u0259\u0294\u02B7\u1DBB\u0313\u0315]|x\u030C/i; // not every caron or circumflex: Skolt Sámi has č â
+  let glyphFontPromise = null;
+  function ensureGlyphFont(data) {
+    try {
+      if (glyphFontPromise || !GLYPH_FONT_LETTERS.test(JSON.stringify(data || {}).normalize('NFD'))) return;
+      glyphFontPromise = (async () => {
+        const url = (typeof chrome !== 'undefined' && chrome.runtime?.getURL) ? chrome.runtime.getURL('fonts/GentiumPlus-R.ttf') : null;
+        if (!url) return;
+        const buffer = await (await fetch(url)).arrayBuffer();
+        const face = new FontFace('LangJack Glyphs', buffer, {
+          unicodeRange: 'U+019A-019B, U+01DD, U+01F0, U+026B-026C, U+0259, U+0294, U+02B7, U+02BC, U+0300-036F, U+1D00-1DBF'
+        });
+        await face.load();
+        document.fonts.add(face);
+      })().catch(() => { glyphFontPromise = null; });
+    } catch (_) {
+      glyphFontPromise = null;
+    }
+  }
+
+  /**
    * Displays the in-page Dictionary UI inside a Shadow DOM container.
    */
   function showDictionaryCard(data) {
     if (!data) return;
+    ensureGlyphFont(data);
 
     // Dismiss any trigger bubble
     hideTriggerBubble(true);
@@ -1176,7 +1203,7 @@
   function getCardStyles() {
     return `
       :host {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "LangJack Glyphs", sans-serif;
         font-size: 13px;
         line-height: 1.45;
         color: #0f172a;
@@ -1496,7 +1523,7 @@
       }
 
       .hfst-raw-reading {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "LangJack Glyphs", monospace;
         font-size: 10px;
         color: #64748b;
         background: #f8fafc;

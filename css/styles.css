@@ -2,6 +2,21 @@
    HFST Morphological Analyzer & Glosser - Modern Linguistic Workbench Theme
    ========================================================================== */
 
+/*
+ * Fallback font for Lushootseed (lut, slh) letters. Android's fonts (Chrome, Kiwi) lack some of them and show boxes, most
+ * often in the monospace panels. unicode-range keeps this font to those letters and the combining marks; everything else
+ * stays in the system font. Gentium Plus, SIL Open Font License (fonts/README.txt).
+ * ƚ ƛ ɫ ɬ ə ǝ ʔ ʼ ʷ ᶻ, x̌ q̓ ƛ̕ (U+030C, U+0313, U+0315) and the other combining marks, modifier letters.
+ */
+@font-face {
+  font-family: "LangJack Glyphs";
+  src: local("Gentium Plus"), local("GentiumPlus"), url("../fonts/GentiumPlus-R.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+019A-019B, U+01DD, U+01F0, U+026B-026C, U+0259, U+0294, U+02B7, U+02BC, U+0300-036F, U+1DBB, U+1D00-1DBF;
+}
+
 :root {
   --primary: #0284c7;
   --primary-hover: #0369a1;
@@ -29,9 +44,11 @@
   --text-muted: #64748b;
   --text-light: #94a3b8;
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  --font-linguistic: "Charis SIL", "Doulos SIL", "DejaVu Sans", "Segoe UI", sans-serif;
+  /* "LangJack Glyphs" (fonts/GentiumPlus-R.ttf, defined at the top) stands before each generic family: it only supplies the letters the
+     system fonts lack, such as Lushootseed ƛ ɬ ə ʔ ʷ and the combining comma / caron on Android */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "LangJack Glyphs", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "LangJack Glyphs", monospace;
+  --font-linguistic: "Charis SIL", "Doulos SIL", "DejaVu Sans", "Segoe UI", "LangJack Glyphs", sans-serif;
 
   --radius-sm: 6px;
   --radius-md: 8px;
