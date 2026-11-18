@@ -492,6 +492,7 @@ export class WorkbenchApp {
     this.cg3StageSelect = document.getElementById('cg3StageSelect');
     this.cg3TraceCheckbox?.addEventListener('change', () => {
       storageService.setSetting('ui_cg3_trace', this.cg3TraceCheckbox.checked);
+      this.syncCg3DeletedCheckbox();
       this.updateExports();
     });
     this.cg3DeletedCheckbox?.addEventListener('change', () => {
@@ -502,6 +503,7 @@ export class WorkbenchApp {
     Promise.all([storageService.getSetting('ui_cg3_trace', false), storageService.getSetting('ui_cg3_deleted', false)]).then(([t, d]) => {
       if (this.cg3TraceCheckbox) this.cg3TraceCheckbox.checked = !!t;
       if (this.cg3DeletedCheckbox) this.cg3DeletedCheckbox.checked = !!d;
+      this.syncCg3DeletedCheckbox();
       if (this.activeExportTab === 'cg3') this.updateExports();
     });
 
@@ -1953,6 +1955,19 @@ export class WorkbenchApp {
     }
   }
 
+  /** With -t the removed readings are always shown (-p is on and fixed); without it -p is the user's choice. */
+  syncCg3DeletedCheckbox() {
+    const box = this.cg3DeletedCheckbox;
+    if (!box) return;
+    if (this.cg3TraceCheckbox?.checked) {
+      box.checked = true;
+      box.disabled = true;
+    } else {
+      box.disabled = false;
+      storageService.getSetting('ui_cg3_deleted', false).then(v => { box.checked = !!v; });
+    }
+  }
+
   /**
    * Fills "Output after:" with the language's grammar files (shown only when there are several) and returns the chosen
    * file name, or null for "all of them".
@@ -1992,7 +2007,7 @@ export class WorkbenchApp {
     try {
       show((await cg3Service.disambiguate(this.sentences, lang, {
         trace: !!this.cg3TraceCheckbox?.checked,
-        showDeleted: !!this.cg3DeletedCheckbox?.checked,
+        showDeleted: !!this.cg3DeletedCheckbox?.checked || !!this.cg3TraceCheckbox?.checked,
         upTo
       })) || '');
     } catch (err) {
@@ -2063,7 +2078,7 @@ export class WorkbenchApp {
       const text = this.exportPreview ? this.exportPreview.textContent : '';
       if (!text || text.startsWith('(')) return; // a placeholder or an error message, not an output
       content = text + '\n';
-      filename = `cg3_disambiguated_${this.srcLang}${this.cg3TraceCheckbox?.checked ? '_trace' : ''}${this.cg3DeletedCheckbox?.checked ? '_p' : ''}.txt`;
+      filename = `cg3_disambiguated_${this.srcLang}${this.cg3TraceCheckbox?.checked ? '_trace' : ''}${this.cg3DeletedCheckbox?.checked && !this.cg3TraceCheckbox?.checked ? '_p' : ''}.txt`;
     }
 
     if (!content) return;

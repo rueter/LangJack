@@ -36,7 +36,7 @@ await cg3Service.saveGrammar('xx', 'g.cg3', 'DELIMITERS = "<.>" ;\nLIST Pl1 = Pl
 const dl = await cg3Service.disambiguate(xs, 'xx', { trace: true, showDeleted: true });
 assert(/^;\t"a" V Pl1 <W:0\.0> REMOVE:\d+/m.test(dl), dl);
 assert(!/Pl1/.test(await cg3Service.disambiguate(xs, 'xx')));
-assert(!/^;/m.test(await cg3Service.disambiguate(xs, 'xx', { trace: true })));
+assert(/^;\t"a" V Pl1/m.test(await cg3Service.disambiguate(xs, 'xx', { trace: true }))); // -t alone shows the removed reading too
 
 // chains: files are put in disambiguator, functions, dependency order whatever the order they come in; upTo shows one stage
 await cg3Service.removeGrammar('xx', 'g.cg3');

@@ -91,12 +91,13 @@ export class Cg3Service {
    * @param {Array<{tokens: Array<Object>}>} sentences  analyzerService.analyzeText output
    * @param {string} lang
    * @param {Object} [options]
-   * @param {boolean} [options.trace]        like vislcg3 -t: each reading carries the rules that selected or mapped it (RULE:line)
+   * @param {boolean} [options.trace]        like vislcg3 -t: each reading carries the rules that selected or mapped it (RULE:line); implies showDeleted
    * @param {boolean} [options.showDeleted]  like vislcg3 -p: removed readings stay, with a ";" in front (and their rule with trace)
    * @param {string}  [options.upTo]         file name of the last grammar to run; its output is what is shown (default: all)
    * @returns {Promise<string|null>} the CG stream after disambiguation, or null when the language has no grammar
    */
   async disambiguate(sentences, lang, { trace = false, showDeleted = false, upTo = null } = {}) {
+    if (trace) showDeleted = true; // a trace without the removed readings does not show what a REMOVE or SELECT rule did
     let stages = await this._parsed(lang);
     if (!stages.length) return null;
     if (upTo) {

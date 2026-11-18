@@ -341,13 +341,13 @@
 
         <!-- Options of export tab 5 (CG3), shown only there -->
         <div id="cg3Options" style="display: none; margin-bottom: 8px; font-size: 13px; gap: 6px 18px; flex-wrap: wrap; align-items: center;">
-          <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="As vislcg3 -t: every reading carries the rules that selected, mapped or changed it, as RULE:line number in the grammar file (for example SELECT:123). A REMOVE rule leaves nothing on the readings that stay; tick -p to see what it removed.">
+          <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="As vislcg3 -t: every reading carries the rules that selected, mapped or changed it, as RULE:line number in the grammar file (for example SELECT:123). The readings the rules removed are shown too, with a ; in front, each with the rule that removed it.">
             <input type="checkbox" id="cg3TraceCheckbox">
-            Trace (-t): rule that acted on each reading
+            Trace (-t): rule that acted on each reading (shows removed readings too)
           </label>
           <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="As vislcg3 -p: readings that a rule removed stay in the output, with a ; in front (and, with -t, the rule that removed them)">
             <input type="checkbox" id="cg3DeletedCheckbox">
-            Removed readings (-p)
+            Removed readings (-p; always on with -t)
           </label>
           <label id="cg3StageLabel" style="display: none; align-items: center; gap: 6px;" title="With several grammar files, show the output after this one (-t and -p then describe its rules). The files run in the order disambiguator, functions, dependency.">
             Output after:
