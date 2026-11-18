@@ -12,6 +12,8 @@ import { analyzerService, normalizeLangCode } from '../services/analyzer-service
 import { dictionaryService, splitGlossItem, CUSTOM_POS_CHOICES, normalizeCustomPos } from '../services/dictionary-service.js';
 import { treebankService } from '../services/treebank-service.js';
 import { ConlluExporter } from '../services/conllu-exporter.js';
+import { HfstRawExporter } from '../services/hfst-raw-exporter.js';
+import { cg3Service } from '../services/cg3-service.js';
 import { InterlinearExporter } from '../services/interlinear-exporter.js';
 import { VerddExporter } from '../services/verdd-exporter.js';
 import { storageService } from '../services/storage-service.js';
@@ -504,6 +506,7 @@ export class WorkbenchApp {
     const nightlyModelCustomInput = document.getElementById('nightlyModelLangCustomInput');
     if (nightlyModelLang) {
       nightlyModelLang.addEventListener('change', () => {
+        this.renderUploadedCg3();
         if (nightlyModelLang.value === 'custom') {
           if (nightlyModelCustomInput) {
             nightlyModelCustomInput.style.display = 'inline-block';
@@ -527,6 +530,7 @@ export class WorkbenchApp {
     }
     document.getElementById('downloadModelBtn')?.addEventListener('click', () => this.handleDownloadModel());
     document.getElementById('uploadModelInput')?.addEventListener('change', (e) => this.handleUploadModel(e));
+    document.getElementById('uploadCg3Input')?.addEventListener('change', (e) => this.handleUploadCg3(e));
     document.getElementById('downloadDictBtn')?.addEventListener('click', () => this.handleDownloadDict());
     document.getElementById('uploadDictInput')?.addEventListener('change', (e) => this.handleUploadDict(e));
 
@@ -1918,6 +1922,11 @@ export class WorkbenchApp {
       output = InterlinearExporter.exportPlainText(this.sentences, this.translations);
     } else if (this.activeExportTab === 'verdd') {
       output = VerddExporter.exportBlock(this.sentences, this.translations, this.srcLang, this.targetLang);
+    } else if (this.activeExportTab === 'hfstol') {
+      output = HfstRawExporter.export(this.sentences);
+    } else if (this.activeExportTab === 'cg3') {
+      this.updateCg3Export();
+      return;
     }
 
     if (this.exportPreview) {
@@ -1925,9 +1934,29 @@ export class WorkbenchApp {
     }
   }
 
+  /** Export tab 5: the raw analyses after the uploaded CG-3 grammar(s) of the source language have run. */
+  async updateCg3Export() {
+    if (!this.exportPreview) return;
+    const lang = this.srcLang;
+    const token = (this._cg3ExportToken = (this._cg3ExportToken || 0) + 1); // only the latest request may write
+    const show = (text) => { if (token === this._cg3ExportToken && this.activeExportTab === 'cg3') this.exportPreview.textContent = text; };
+    if (!this.sentences || this.sentences.length === 0) { show('(No analysis output yet. Click Analyze above.)'); return; }
+    if (!(await cg3Service.hasGrammar(lang))) {
+      show(`(No CG-3 grammar for ${lang} in this browser. Open Manage HFST Models & Dictionaries, choose ${lang} and use "Upload disambiguator.cg3".)`);
+      return;
+    }
+    show('(Running the CG-3 grammar...)');
+    try {
+      show((await cg3Service.disambiguate(this.sentences, lang)) || '');
+    } catch (err) {
+      console.error('CG-3 error:', err);
+      show(`(CG-3 grammar error: ${err.message})`);
+    }
+  }
+
   handleCopyExport() {
     const text = this.exportPreview.textContent;
-    if (!text || text.startsWith('(No analysis')) return;
+    if (!text || text.startsWith('(No analysis') || (this.activeExportTab === 'cg3' && text.startsWith('('))) return;
 
     navigator.clipboard.writeText(text).then(() => {
       this.showToast(`Copied ${this.activeExportTab.toUpperCase()} to clipboard!`, 'success');
@@ -1980,6 +2009,14 @@ export class WorkbenchApp {
       content = VerddExporter.exportXML(this.sentences, this.translations, this.srcLang, this.targetLang);
       filename = `verdd_lexicon_${this.srcLang}.xml`;
       mime = 'application/xml';
+    } else if (this.activeExportTab === 'hfstol') {
+      content = HfstRawExporter.export(this.sentences);
+      filename = `hfst_analysis_${this.srcLang}.txt`;
+    } else if (this.activeExportTab === 'cg3') {
+      const text = this.exportPreview ? this.exportPreview.textContent : '';
+      if (!text || text.startsWith('(')) return; // a placeholder or an error message, not an output
+      content = text + '\n';
+      filename = `cg3_disambiguated_${this.srcLang}.txt`;
     }
 
     if (!content) return;
@@ -3261,6 +3298,7 @@ export class WorkbenchApp {
     }
     await this.renderCustomEntriesTable();
     await this.renderUploadedDicts();
+    await this.renderUploadedCg3();
   }
 
   closeModal() {
@@ -3763,6 +3801,69 @@ export class WorkbenchApp {
       if (this.sentences.length > 0) this.handleAnalyze();
     } catch (err) {
       this.showToast('Error loading analyzer: ' + err.message, 'error');
+    }
+  }
+
+  /** The language chosen in the analyser list of Manage HFST Models & Dictionaries (else the source language). */
+  modelPanelLang() {
+    const sel = document.getElementById('nightlyModelLang');
+    const custom = document.getElementById('nightlyModelLangCustomInput');
+    let raw = sel?.value || this.srcLang || 'myv';
+    if (raw === 'custom') raw = custom?.value?.trim() || this.srcLang || 'myv';
+    return normalizeLangCode(raw);
+  }
+
+  async handleUploadCg3(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ''; // the same file can be chosen again
+    if (!files.length) return;
+    const lang = this.modelPanelLang();
+    const added = [];
+    for (const file of files) {
+      try {
+        await cg3Service.saveGrammar(lang, file.name, await file.text());
+        added.push(file.name);
+      } catch (err) {
+        this.showToast(`Could not load "${file.name}": ${err.message}`, 'error');
+      }
+    }
+    await this.renderUploadedCg3();
+    if (added.length) {
+      this.showToast(`Loaded ${added.join(', ')} for ${lang}. Use export tab 5 (CG3) to see the disambiguated output.`, 'success');
+      if (this.activeExportTab === 'cg3') this.updateExports();
+    }
+  }
+
+  /** Lists the CG-3 grammars kept in this browser for the language chosen in the analyser list, each with Remove. */
+  async renderUploadedCg3() {
+    const box = document.getElementById('uploadedCg3List');
+    if (!box) return;
+    const lang = this.modelPanelLang();
+    const list = await cg3Service.getGrammars(lang);
+    box.replaceChildren();
+    if (!list.length) return;
+    const title = document.createElement('div');
+    title.style.color = 'var(--text-muted)';
+    title.textContent = `CG-3 grammars for ${lang} (kept only in this browser, run in this order):`;
+    box.appendChild(title);
+    for (const g of list) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 2px 0;';
+      const label = document.createElement('span');
+      label.textContent = `${g.name} · ${Math.max(1, Math.round(g.text.length / 1024))} KB · ${new Date(g.timestamp).toLocaleString()}`;
+      const remove = document.createElement('button');
+      remove.className = 'btn-remove btn-sm';
+      remove.title = 'Remove this grammar from this browser';
+      remove.textContent = '🗑️';
+      remove.addEventListener('click', async () => {
+        if (!this.confirmAction(`Remove "${g.name}" (${lang}) from this browser?`)) return;
+        await cg3Service.removeGrammar(lang, g.name);
+        await this.renderUploadedCg3();
+        if (this.activeExportTab === 'cg3') this.updateExports();
+        this.showToast(`Removed "${g.name}".`, 'info');
+      });
+      row.append(label, remove);
+      box.appendChild(row);
     }
   }
 

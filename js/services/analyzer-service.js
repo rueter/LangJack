@@ -929,7 +929,8 @@ export class AnalyzerService {
       tags,
       feats,
       featsMap: {},
-      isGuessed: true
+      isGuessed: true,
+      isInferred: true // made up here, not an analysis from the transducer
     };
   }
 

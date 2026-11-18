@@ -4,7 +4,7 @@
  */
 
 // Bump the suffix on every deploy so returning visitors receive the new files.
-const CACHE_NAME = 'langjack-pwa-v1.0.1-r18';
+const CACHE_NAME = 'langjack-pwa-v1.0.1-r20';
 
 const PRECACHE_ASSETS = [
   './',
@@ -24,6 +24,7 @@ const PRECACHE_ASSETS = [
   'js/services/storage-service.js',
   'js/services/treebank-service.js',
   'js/services/conllu-exporter.js',
+  'js/services/hfst-raw-exporter.js',
   'js/services/conllu-parser.js',
   'js/services/conllu-enhance.js',
   'js/services/gloss-format.js',
@@ -32,7 +33,18 @@ const PRECACHE_ASSETS = [
   'js/services/conllu-import-service.js',
   'js/controllers/conllu-import-panel.js',
   'js/lib/hfst/core.js',
-  'js/lib/hfst/transducer.js'
+  'js/lib/hfst/transducer.js',
+  'js/services/cg3-service.js',
+  'js/lib/jscg3/index.js',
+  'js/lib/jscg3/tag.js',
+  'js/lib/jscg3/cohort.js',
+  'js/lib/jscg3/set_def.js',
+  'js/lib/jscg3/context.js',
+  'js/lib/jscg3/rule.js',
+  'js/lib/jscg3/grammar.js',
+  'js/lib/jscg3/stream.js',
+  'js/lib/jscg3/engine.js',
+  'js/lib/jscg3/pipeline.js'
 ];
 
 self.addEventListener('install', (event) => {

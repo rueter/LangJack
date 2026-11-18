@@ -267,6 +267,12 @@
         <div class="export-tab" data-format="verdd">
           3. Ve'rdd Development Output
         </div>
+        <div class="export-tab" data-format="hfstol" title="Every analysis the .hfstol transducer gives for each word, one word per line block (hfst-lookup / CG style, with weights)">
+          4. Raw HFST Analysis (.hfstol)
+        </div>
+        <div class="export-tab" data-format="cg3" title="The raw analyses after the uploaded CG-3 grammar (for example disambiguator.cg3) has run over them, sentence by sentence">
+          5. Disambiguated (CG3)
+        </div>
       </div>
 
       <div class="panel-body">
@@ -406,6 +412,15 @@
               <input type="file" id="uploadModelInput" accept=".hfstol,.hfst" style="display: none;">
             </label>
           </div>
+          <!-- Constraint Grammar disambiguator for the language chosen above (run by @rueter/jscg3, kept only in this browser) -->
+          <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <label class="btn btn-secondary btn-sm" style="cursor: pointer;" title="Upload GiellaLT's src/cg3/disambiguator.cg3 (the .cg3 source, not the compiled .bin) for the language chosen in the list above. Several files run in the order you add them (disambiguator, functions, dependency).">
+              📁 Upload disambiguator.cg3
+              <input type="file" id="uploadCg3Input" accept=".cg3" multiple style="display: none;">
+            </label>
+            <span style="font-size: 11px; color: var(--text-muted);">for the language chosen in the list above; used by export tab 5 (CG3)</span>
+          </div>
+          <div id="uploadedCg3List" style="margin-top: 6px; font-size: 12px;"></div>
           <!-- Download Progress Indicator -->
           <div id="modelDownloadProgress" style="display: none; margin-top: 8px;">
             <div style="font-size: 11px; margin-bottom: 2px;" id="modelDownloadText">Downloading...</div>
