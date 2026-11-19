@@ -105,6 +105,39 @@ export function normalizeLangCode(str) {
   return sanitized || 'myv';
 }
 
+// A real transducer is megabytes; a Git LFS pointer (what raw.githubusercontent.com and jsDelivr send for the
+// UralicNLP models) is about 130 bytes of text, and an error page is HTML. Neither can be read as a transducer.
+const MIN_MODEL_BYTES = 256;
+function looksLikeTransducer(buffer) {
+  if (!buffer || buffer.byteLength < MIN_MODEL_BYTES) return false;
+  const head = new TextDecoder('latin1').decode(new Uint8Array(buffer, 0, 32));
+  return !/^(?:version https:\/\/git-lfs|<!doctype|<html)/i.test(head);
+}
+
+/** Reads a response body to an ArrayBuffer, reporting progress (received, total, percent) when asked. */
+async function readResponseBody(resp, onProgress = null) {
+  if (resp.body && typeof resp.body.getReader === 'function') {
+    const contentLength = +(resp.headers.get('Content-Length') || 0);
+    const reader = resp.body.getReader();
+    let receivedLength = 0;
+    const chunks = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      receivedLength += value.length;
+      if (onProgress) onProgress(receivedLength, contentLength, contentLength > 0 ? Math.round((receivedLength / contentLength) * 100) : 0);
+    }
+    const all = new Uint8Array(receivedLength);
+    let position = 0;
+    for (const chunk of chunks) { all.set(chunk, position); position += chunk.length; }
+    return all.buffer;
+  }
+  const buffer = await resp.arrayBuffer();
+  if (onProgress) onProgress(buffer.byteLength, buffer.byteLength, 100);
+  return buffer;
+}
+
 async function fetchBinary(path) {
   if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
     const url = chrome.runtime.getURL(path);
@@ -321,9 +354,13 @@ export class AnalyzerService {
    */
   getModelDownloadUrls(langCode) {
     const cleanLang = normalizeLangCode(langCode || 'myv');
+    // The models are Git LFS objects: raw.githubusercontent.com and jsDelivr answer 200 with a 133-byte pointer text,
+    // not the transducer. media.githubusercontent.com (CORS-enabled) serves the real file, so it follows each raw URL.
     return [
       `https://raw.githubusercontent.com/Rootroo-ltd/uralicnlpmodels/main/nightly/${cleanLang}/analyser-gt-desc.hfstol`,
+      `https://media.githubusercontent.com/media/Rootroo-ltd/uralicnlpmodels/main/nightly/${cleanLang}/analyser-gt-desc.hfstol`,
       `https://raw.githubusercontent.com/Rootroo-ltd/uralicnlpmodels/main/nightly/${cleanLang}/analyser-gt-norm.hfstol`,
+      `https://media.githubusercontent.com/media/Rootroo-ltd/uralicnlpmodels/main/nightly/${cleanLang}/analyser-gt-norm.hfstol`,
       `https://cdn.jsdelivr.net/gh/Rootroo-ltd/uralicnlpmodels@main/nightly/${cleanLang}/analyser-gt-desc.hfstol`,
       `https://cdn.jsdelivr.net/gh/Rootroo-ltd/uralicnlpmodels@main/nightly/${cleanLang}/analyser-gt-norm.hfstol`,
       `http://models.uralicnlp.com/nightly/${cleanLang}/analyser-gt-desc.hfstol`,
@@ -343,8 +380,10 @@ export class AnalyzerService {
       : this.getModelDownloadUrls(cleanLang);
 
     let lastError = null;
-    let resp = null;
+    let buffer = null;
     let successfulUrl = null;
+    const modelId = `uralic_${cleanLang}_analyser`;
+    const modelName = `UralicNLP ${cleanLang.toUpperCase()} Descriptive Analyser (nightly)`;
 
     for (const downloadUrl of candidateUrls) {
       try {
@@ -360,67 +399,43 @@ export class AnalyzerService {
         } finally {
           if (timer) clearTimeout(timer);
         }
-        if (r.ok) {
-          resp = r;
-          successfulUrl = downloadUrl;
-          break;
-        } else {
+        if (!r.ok) {
           lastError = new Error(`HTTP ${r.status} ${r.statusText} from ${downloadUrl}`);
+          continue;
         }
+        // a Git LFS pointer is announced by its size: do not read it as a model, go on to the next mirror
+        const announced = +(r.headers.get('Content-Length') || 0);
+        if (announced > 0 && announced < MIN_MODEL_BYTES) {
+          lastError = new Error(`${downloadUrl} sent ${announced} bytes (a Git LFS pointer, not the model)`);
+          continue;
+        }
+        const body = await readResponseBody(r, onProgress);
+        if (!looksLikeTransducer(body)) {
+          lastError = new Error(`${downloadUrl} did not send a transducer (${body.byteLength} bytes)`);
+          continue;
+        }
+        buffer = body;
+        successfulUrl = downloadUrl;
+        break;
       } catch (err) {
         lastError = err;
       }
     }
 
-    const modelId = `uralic_${cleanLang}_analyser`;
-    const modelName = `UralicNLP ${cleanLang.toUpperCase()} Descriptive Analyser (nightly)`;
-
-    if (!resp) {
+    if (!buffer) {
       // If network download failed, check if a pre-packaged model exists for this language
       const packagedPath = this.packagedModelPaths[cleanLang];
       if (packagedPath) {
         try {
-          const buffer = await fetchBinary(packagedPath);
+          const packaged = await fetchBinary(packagedPath);
           this.models.delete(cleanLang);
-          await this.loadFromBuffer(buffer, modelId, modelName, cleanLang, true);
-          return { id: modelId, name: modelName, size: buffer.byteLength, sourceUrl: packagedPath };
+          await this.loadFromBuffer(packaged, modelId, modelName, cleanLang, true);
+          return { id: modelId, name: modelName, size: packaged.byteLength, sourceUrl: packagedPath };
         } catch (packErr) {
           console.warn('Packaged model fallback also failed:', packErr);
         }
       }
       throw new Error(`Failed to download UralicNLP model for "${cleanLang}": ${lastError ? lastError.message : 'All mirrors unreachable'}`);
-    }
-
-    let buffer;
-    if (resp.body && typeof resp.body.getReader === 'function') {
-      const contentLength = +(resp.headers.get('Content-Length') || 0);
-      const reader = resp.body.getReader();
-      let receivedLength = 0;
-      const chunks = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        receivedLength += value.length;
-        if (onProgress) {
-          const pct = contentLength > 0 ? Math.round((receivedLength / contentLength) * 100) : 0;
-          onProgress(receivedLength, contentLength, pct);
-        }
-      }
-
-      const allChunks = new Uint8Array(receivedLength);
-      let position = 0;
-      for (const chunk of chunks) {
-        allChunks.set(chunk, position);
-        position += chunk.length;
-      }
-      buffer = allChunks.buffer;
-    } else {
-      buffer = await resp.arrayBuffer();
-      if (onProgress) {
-        onProgress(buffer.byteLength, buffer.byteLength, 100);
-      }
     }
 
     // Invalidate in-memory cached instance so the newly downloaded nightly model is immediately active
@@ -436,6 +451,7 @@ export class AnalyzerService {
     const cleanLang = normalizeLangCode(langCode || 'myv');
     return [
       `https://raw.githubusercontent.com/Rootroo-ltd/uralicnlpmodels/main/nightly/${cleanLang}/generator-gt-norm.hfstol`,
+      `https://media.githubusercontent.com/media/Rootroo-ltd/uralicnlpmodels/main/nightly/${cleanLang}/generator-gt-norm.hfstol`,
       `https://cdn.jsdelivr.net/gh/Rootroo-ltd/uralicnlpmodels@main/nightly/${cleanLang}/generator-gt-norm.hfstol`,
       `http://models.uralicnlp.com/nightly/${cleanLang}/generator-gt-norm.hfstol`,
       `https://models.uralicnlp.com/nightly/${cleanLang}/generator-gt-norm.hfstol`
@@ -452,7 +468,7 @@ export class AnalyzerService {
       : this.getGeneratorDownloadUrls(cleanLang);
 
     let lastError = null;
-    let resp = null;
+    let buffer = null;
     let successfulUrl = null;
 
     for (const downloadUrl of candidateUrls) {
@@ -461,23 +477,32 @@ export class AnalyzerService {
           ? `${downloadUrl}&_t=${Date.now()}`
           : `${downloadUrl}?_t=${Date.now()}`;
         const r = await fetch(bustUrl);
-        if (r.ok) {
-          resp = r;
-          successfulUrl = downloadUrl;
-          break;
-        } else {
+        if (!r.ok) {
           lastError = new Error(`HTTP ${r.status} ${r.statusText} from ${downloadUrl}`);
+          continue;
         }
+        const announced = +(r.headers.get('Content-Length') || 0);
+        if (announced > 0 && announced < MIN_MODEL_BYTES) {
+          lastError = new Error(`${downloadUrl} sent ${announced} bytes (a Git LFS pointer, not the generator)`);
+          continue;
+        }
+        const body = await r.arrayBuffer();
+        if (!looksLikeTransducer(body)) {
+          lastError = new Error(`${downloadUrl} did not send a transducer (${body.byteLength} bytes)`);
+          continue;
+        }
+        buffer = body;
+        successfulUrl = downloadUrl;
+        break;
       } catch (err) {
         lastError = err;
       }
     }
 
-    if (!resp) {
+    if (!buffer) {
       throw new Error(`Failed to download generator for "${cleanLang}": ${lastError ? lastError.message : 'All mirrors unreachable'}`);
     }
 
-    const buffer = await resp.arrayBuffer();
     const hfst = HfstInputStream.fromBuffer(buffer).read();
     const genId = `uralic_${cleanLang}_generator`;
     const genName = `UralicNLP ${cleanLang.toUpperCase()} Generator (nightly)`;
