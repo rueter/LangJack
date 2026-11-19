@@ -4,7 +4,7 @@
  */
 
 // Bump the suffix on every deploy so returning visitors receive the new files.
-const CACHE_NAME = 'langjack-pwa-v1.0.1-r24';
+const CACHE_NAME = 'langjack-pwa-v1.0.1-r25';
 
 const PRECACHE_ASSETS = [
   './',
@@ -35,6 +35,8 @@ const PRECACHE_ASSETS = [
   'js/lib/hfst/core.js',
   'js/lib/hfst/transducer.js',
   'js/services/cg3-service.js',
+  'js/services/lemma-paradigm.js',
+  'js/lib/hfst/enumerate.js',
   'js/lib/jscg3/index.js',
   'js/lib/jscg3/tag.js',
   'js/lib/jscg3/cohort.js',

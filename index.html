@@ -145,6 +145,9 @@
             <button id="analyzeBtn" class="btn btn-primary">
               ⚡ Analyze Morphologically (hfst-js)
             </button>
+            <button id="paradigmBtn" class="btn btn-secondary" title="Put a lemma (headword) in the field above and see all its forms in 3. Multi-Format Export, tab 6">
+              📚 Paradigm of Lemma
+            </button>
             <button id="clearBtn" class="btn btn-secondary btn-sm">
               Clear
             </button>
@@ -273,6 +276,9 @@
         <div class="export-tab" data-format="cg3" title="The raw analyses after the uploaded CG-3 grammar (for example disambiguator.cg3) has run over them, sentence by sentence">
           5. Disambiguated (CG3)
         </div>
+        <div class="export-tab" data-format="paradigm" title="The forms of the lemma in the input field (1.), one analysis per line: kala+N+Sg+Nom: kala">
+          6. Paradigm of Lemma
+        </div>
       </div>
 
       <div class="panel-body">
@@ -353,6 +359,22 @@
             Output after:
             <select id="cg3StageSelect" style="font-size: 12px; padding: 2px 4px;"></select>
           </label>
+        </div>
+
+        <!-- Options of export tab 6 (paradigm), shown only there -->
+        <div id="paradigmOptions" style="display: none; margin-bottom: 8px; font-size: 13px; gap: 6px 18px; flex-wrap: wrap; align-items: center;">
+          <label style="display: inline-flex; align-items: center; gap: 6px;">
+            Show:
+            <select id="paradigmViewSelect" style="font-size: 12px; padding: 2px 4px;">
+              <option value="plain">Paradigm without derivation</option>
+              <option value="der">Paradigm with derivation (+Der/...)</option>
+            </select>
+          </label>
+          <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="Also the forms with clitics (+Clt/..., +Foc/..., +Qst/...). They multiply every cell, so they are left out unless you ask for them.">
+            <input type="checkbox" id="paradigmCliticsCheckbox">
+            Clitics
+          </label>
+          <span id="paradigmStatus" style="font-size: 11px; color: var(--text-muted);"></span>
         </div>
 
         <pre id="exportPreview" class="export-preview-box">(No analysis output yet. Click Analyze above.)</pre>

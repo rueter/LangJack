@@ -1,0 +1,26 @@
+Multichar_Symbols +N +V +A +Sg +Pl +Nom +Gen +Dial/X +Der/lainen +Err/Orth
+
+LEXICON Root
+kala NStem ;
+
+LEXICON NStem
++N:0 NCase ;
++N+Der/lainen:lainen AStem ;
+
+LEXICON AStem
++A:0 NCase ;
+
+LEXICON NCase
++Sg:0 SgC ;
++Pl:t PlC ;
+
+LEXICON SgC
++Nom:0 # ;
++Gen:n # ;
+
+LEXICON PlC
++Nom:0 # ;
++Gen:ain # "weight: 1" ;
++Gen:ojen # "weight: 0" ;
++Gen+Dial/X:iden # ;
++Gen+Err/Orth:ojn # ;

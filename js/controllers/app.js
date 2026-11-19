@@ -14,6 +14,7 @@ import { treebankService } from '../services/treebank-service.js';
 import { ConlluExporter } from '../services/conllu-exporter.js';
 import { HfstRawExporter } from '../services/hfst-raw-exporter.js';
 import { cg3Service, splitLangPrefix } from '../services/cg3-service.js';
+import { generateLemmaParadigm, formatCells } from '../services/lemma-paradigm.js';
 import { InterlinearExporter } from '../services/interlinear-exporter.js';
 import { VerddExporter } from '../services/verdd-exporter.js';
 import { storageService } from '../services/storage-service.js';
@@ -487,6 +488,12 @@ export class WorkbenchApp {
         this.updateExports();
       });
     });
+    // paradigm of the lemma in the input field (export tab 6)
+    this.paradigmViewSelect = document.getElementById('paradigmViewSelect');
+    this.paradigmCliticsCheckbox = document.getElementById('paradigmCliticsCheckbox');
+    document.getElementById('paradigmBtn')?.addEventListener('click', () => this.showParadigmTab());
+    this.paradigmViewSelect?.addEventListener('change', () => this.updateExports());
+    this.paradigmCliticsCheckbox?.addEventListener('change', () => this.updateExports());
     this.cg3TraceCheckbox = document.getElementById('cg3TraceCheckbox');
     this.cg3DeletedCheckbox = document.getElementById('cg3DeletedCheckbox');
     this.cg3StageSelect = document.getElementById('cg3StageSelect');
@@ -1930,6 +1937,8 @@ export class WorkbenchApp {
   // Multi-format export updates (Requirement 5)
   updateExports() {
     let output = '';
+    const paradigmOptions = document.getElementById('paradigmOptions');
+    if (paradigmOptions) paradigmOptions.style.display = this.activeExportTab === 'paradigm' ? 'flex' : 'none';
     const cg3Options = document.getElementById('cg3Options');
     if (cg3Options) cg3Options.style.display = this.activeExportTab === 'cg3' ? 'flex' : 'none';
 
@@ -1948,10 +1957,64 @@ export class WorkbenchApp {
     } else if (this.activeExportTab === 'cg3') {
       this.updateCg3Export();
       return;
+    } else if (this.activeExportTab === 'paradigm') {
+      this.updateParadigmExport();
+      return;
     }
 
     if (this.exportPreview) {
       this.exportPreview.textContent = output || '(No analysis output yet. Click Analyze above.)';
+    }
+  }
+
+  /** The lemma (headword) in field 1: the first word of the input text, without surrounding punctuation. */
+  paradigmLemma() {
+    const first = (this.inputTextArea?.value || '').trim().split(/\s+/)[0] || '';
+    return first.replace(/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu, '');
+  }
+
+  /** The "Paradigm of Lemma" button: opens export tab 6. */
+  showParadigmTab() {
+    if (!this.paradigmLemma()) {
+      this.showToast('Write a lemma (headword) in the input field first.', 'error');
+      return;
+    }
+    this.exportTabs.forEach(t => t.classList.toggle('active', t.dataset.format === 'paradigm'));
+    this.activeExportTab = 'paradigm';
+    this.updateExports();
+    document.getElementById('exportPreview')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  /** Export tab 6: all forms of the lemma in the input field, read from the language's transducer. */
+  async updateParadigmExport() {
+    if (!this.exportPreview) return;
+    const lang = this.srcLang;
+    const lemma = this.paradigmLemma();
+    const clitics = !!this.paradigmCliticsCheckbox?.checked;
+    const derivation = this.paradigmViewSelect?.value === 'der';
+    const status = document.getElementById('paradigmStatus');
+    const token = (this._paradigmToken = (this._paradigmToken || 0) + 1); // only the latest request may write
+    const show = (text, note = '') => {
+      if (token !== this._paradigmToken || this.activeExportTab !== 'paradigm') return;
+      this.exportPreview.textContent = text;
+      if (status) status.textContent = note;
+    };
+    if (!lemma) { show('(Write a lemma (headword) in the input field (1.) and click "Paradigm of Lemma".)'); return; }
+    const cacheKey = `${lang}|${lemma}|${clitics}`;
+    try {
+      if (!this._paradigmCache || this._paradigmCache.key !== cacheKey) {
+        show(`(Reading the forms of "${lemma}" (${lang}) from the transducer...)`, 'The normative generator is loaded the first time, which can take a while.');
+        this._paradigmCache = { key: cacheKey, result: await generateLemmaParadigm(lang, lemma, { clitics }) };
+      }
+      const { cells, truncated, source } = this._paradigmCache.result;
+      const text = formatCells(cells, lemma, { derivation });
+      const count = cells.filter(c => derivation || !c.derived).length;
+      const origin = source === 'generator' ? 'normative generator' : 'analyser read backwards (no normative marking beyond what it carries)';
+      show(text || `(No analysis in the ${lang} transducer starts with "${lemma}" as a lemma.)`,
+        text ? `${count} analyses from the ${origin}.${truncated ? ' Stopped at the size limit: not complete.' : ''}` : '');
+    } catch (err) {
+      console.error('Paradigm error:', err);
+      show(`(Could not make the paradigm: ${err.message})`);
     }
   }
 
@@ -2018,7 +2081,7 @@ export class WorkbenchApp {
 
   handleCopyExport() {
     const text = this.exportPreview.textContent;
-    if (!text || text.startsWith('(No analysis') || (this.activeExportTab === 'cg3' && text.startsWith('('))) return;
+    if (!text || text.startsWith('(No analysis') || ((this.activeExportTab === 'cg3' || this.activeExportTab === 'paradigm') && text.startsWith('('))) return;
 
     navigator.clipboard.writeText(text).then(() => {
       this.showToast(`Copied ${this.activeExportTab.toUpperCase()} to clipboard!`, 'success');
@@ -2074,6 +2137,11 @@ export class WorkbenchApp {
     } else if (this.activeExportTab === 'hfstol') {
       content = HfstRawExporter.export(this.sentences);
       filename = `hfst_analysis_${this.srcLang}.txt`;
+    } else if (this.activeExportTab === 'paradigm') {
+      const text = this.exportPreview ? this.exportPreview.textContent : '';
+      if (!text || text.startsWith('(')) return;
+      content = text + '\n';
+      filename = `paradigm_${this.srcLang}_${this.paradigmLemma()}${this.paradigmViewSelect?.value === 'der' ? '_der' : ''}.txt`;
     } else if (this.activeExportTab === 'cg3') {
       const text = this.exportPreview ? this.exportPreview.textContent : '';
       if (!text || text.startsWith('(')) return; // a placeholder or an error message, not an output
