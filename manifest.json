@@ -47,6 +47,7 @@
   ],
   "host_permissions": [
     "https://raw.githubusercontent.com/*",
+    "https://media.githubusercontent.com/*",
     "https://cdn.jsdelivr.net/*",
     "https://models.uralicnlp.com/*",
     "http://models.uralicnlp.com/*",

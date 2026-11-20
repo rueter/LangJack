@@ -107,15 +107,15 @@ export function normalizeLangCode(str) {
 
 // A real transducer is megabytes; a Git LFS pointer (what raw.githubusercontent.com and jsDelivr send for the
 // UralicNLP models) is about 130 bytes of text, and an error page is HTML. Neither can be read as a transducer.
-const MIN_MODEL_BYTES = 256;
-function looksLikeTransducer(buffer) {
+export const MIN_MODEL_BYTES = 256;
+export function looksLikeTransducer(buffer) {
   if (!buffer || buffer.byteLength < MIN_MODEL_BYTES) return false;
   const head = new TextDecoder('latin1').decode(new Uint8Array(buffer, 0, 32));
   return !/^(?:version https:\/\/git-lfs|<!doctype|<html)/i.test(head);
 }
 
 /** Reads a response body to an ArrayBuffer, reporting progress (received, total, percent) when asked. */
-async function readResponseBody(resp, onProgress = null) {
+export async function readResponseBody(resp, onProgress = null) {
   if (resp.body && typeof resp.body.getReader === 'function') {
     const contentLength = +(resp.headers.get('Content-Length') || 0);
     const reader = resp.body.getReader();

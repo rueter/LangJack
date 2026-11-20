@@ -3848,6 +3848,10 @@ export class WorkbenchApp {
       const sizeMb = res?.size ? ` (${(res.size / 1024 / 1024).toFixed(1)} MB)` : '';
       this.showToast(`✓ Successfully renewed UralicNLP analyzer for ${langName} (${lang})${sizeMb}!`, 'success');
 
+      // The generator behind "Paradigm of Lemma" is kept in the browser too, and would stay old without this
+      if (label) label.textContent = 'Generator...';
+      await this.renewGenerator(lang, langName);
+
       // Re-analyze workspace text if present so all tokens get refreshed readings
       if (this.sentences.length > 0 || (this.inputTextArea && this.inputTextArea.value.trim())) {
         await this.handleAnalyze();
@@ -3861,6 +3865,22 @@ export class WorkbenchApp {
         btn.classList.remove('renewing');
       }
       if (label) label.textContent = 'Renew UralicNLP';
+    }
+  }
+
+  /** Fetches the nightly generator of a language again (replacing the copy kept in this browser) and drops the cached paradigm. */
+  async renewGenerator(lang, langName = lang) {
+    try {
+      const g = await analyzerService.downloadAndLoadGenerator(lang);
+      this._paradigmCache = null;
+      const mb = g?.size ? ` (${(g.size / 1024 / 1024).toFixed(1)} MB)` : '';
+      this.showToast(`✓ Renewed the UralicNLP generator for ${langName} (${lang})${mb}`, 'success');
+      if (this.activeExportTab === 'paradigm') this.updateExports();
+      return true;
+    } catch (err) {
+      console.warn('Error renewing UralicNLP generator:', err);
+      this.showToast(`Generator for ${langName} (${lang}) not renewed: ${err.message}. The copy kept in this browser stays.`, 'info');
+      return false;
     }
   }
 
@@ -3911,6 +3931,7 @@ export class WorkbenchApp {
       this.updateModelStatusDisplay();
       this.showToast(`Downloaded & activated ${lang.toUpperCase()} analyzer!`, 'success');
       if (this.sentences.length > 0) this.handleAnalyze();
+      await this.renewGenerator(lang, getLangDisplayName(lang));
     } catch (err) {
       this.showToast('Download error: ' + err.message, 'error');
     } finally {

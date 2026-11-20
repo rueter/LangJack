@@ -8,7 +8,7 @@
 
 import { HfstInputStream } from '../lib/hfst/core.js';
 import { storageService } from './storage-service.js';
-import { normalizeLangCode, KNOWN_LANGUAGES } from './analyzer-service.js';
+import { normalizeLangCode, KNOWN_LANGUAGES, MIN_MODEL_BYTES, looksLikeTransducer, readResponseBody } from './analyzer-service.js';
 import { stripGuessTags } from './tag-mapper.js';
 import { formatGloss } from './gloss-format.js';
 import { SpellRelaxService } from './spell-relax-service.js';
@@ -374,6 +374,8 @@ export class DictionaryService {
     }
     urls.push(
       'https://raw.githubusercontent.com/Rootroo-ltd/uralicnlpmodels/main/nightly/dictionary/generator-gt-norm.hfstol',
+      // a Git LFS object: the raw URL (and jsDelivr) send a pointer text, media.githubusercontent.com the real file
+      'https://media.githubusercontent.com/media/Rootroo-ltd/uralicnlpmodels/main/nightly/dictionary/generator-gt-norm.hfstol',
       'https://cdn.jsdelivr.net/gh/Rootroo-ltd/uralicnlpmodels@main/nightly/dictionary/generator-gt-norm.hfstol',
       'http://models.uralicnlp.com/nightly/dictionary/generator-gt-norm.hfstol',
       'https://models.uralicnlp.com/nightly/dictionary/generator-gt-norm.hfstol'
@@ -390,8 +392,9 @@ export class DictionaryService {
       : this.getDictionaryDownloadUrls(langCode);
 
     let lastError = null;
-    let resp = null;
     let successfulUrl = null;
+    let jsonText = null;
+    let buffer = null;
 
     for (const downloadUrl of candidateUrls) {
       try {
@@ -399,59 +402,45 @@ export class DictionaryService {
           ? `${downloadUrl}&_t=${Date.now()}`
           : `${downloadUrl}?_t=${Date.now()}`;
         const r = await fetch(bustUrl, { cache: 'reload' });
-        if (r.ok) {
-          resp = r;
-          successfulUrl = downloadUrl;
-          break;
-        } else {
+        if (!r.ok) {
           lastError = new Error(`HTTP ${r.status} ${r.statusText} from ${downloadUrl}`);
+          continue;
         }
+        const contentType = r.headers.get('Content-Type') || '';
+        if (downloadUrl.endsWith('.json') || contentType.includes('json')) {
+          const text = await r.text();
+          if (/^version https:\/\/git-lfs/.test(text)) { // a Git LFS pointer, not the dictionary
+            lastError = new Error(`${downloadUrl} sent a Git LFS pointer, not the dictionary`);
+            continue;
+          }
+          jsonText = text;
+        } else {
+          const announced = +(r.headers.get('Content-Length') || 0);
+          if (announced > 0 && announced < MIN_MODEL_BYTES) {
+            lastError = new Error(`${downloadUrl} sent ${announced} bytes (a Git LFS pointer, not the dictionary)`);
+            continue;
+          }
+          const body = await readResponseBody(r, onProgress);
+          if (!looksLikeTransducer(body)) {
+            lastError = new Error(`${downloadUrl} did not send a transducer (${body.byteLength} bytes)`);
+            continue;
+          }
+          buffer = body;
+        }
+        successfulUrl = downloadUrl;
+        break;
       } catch (err) {
         lastError = err;
       }
     }
 
-    if (!resp) {
+    if (!successfulUrl) {
       throw new Error(`Failed to download UralicNLP dictionary: ${lastError ? lastError.message : 'All mirrors unreachable'}`);
     }
 
-    const contentType = resp.headers.get('Content-Type') || '';
-    if (successfulUrl.endsWith('.json') || contentType.includes('json')) {
-      const text = await resp.text();
-      const count = await this.importUralicJsonDictionary(text, langCode || 'myv');
-      return { id: `uralic_${langCode || 'custom'}_dict`, name: `UralicNLP ${langCode || ''} Dictionary (${count} entries)`, size: text.length, sourceUrl: successfulUrl };
-    }
-
-    let buffer;
-    if (resp.body && typeof resp.body.getReader === 'function') {
-      const contentLength = +(resp.headers.get('Content-Length') || 0);
-      const reader = resp.body.getReader();
-      let receivedLength = 0;
-      const chunks = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        receivedLength += value.length;
-        if (onProgress) {
-          const pct = contentLength > 0 ? Math.round((receivedLength / contentLength) * 100) : 0;
-          onProgress(receivedLength, contentLength, pct);
-        }
-      }
-
-      const allChunks = new Uint8Array(receivedLength);
-      let position = 0;
-      for (const chunk of chunks) {
-        allChunks.set(chunk, position);
-        position += chunk.length;
-      }
-      buffer = allChunks.buffer;
-    } else {
-      buffer = await resp.arrayBuffer();
-      if (onProgress) {
-        onProgress(buffer.byteLength, buffer.byteLength, 100);
-      }
+    if (jsonText !== null) {
+      const count = await this.importUralicJsonDictionary(jsonText, langCode || 'myv');
+      return { id: `uralic_${langCode || 'custom'}_dict`, name: `UralicNLP ${langCode || ''} Dictionary (${count} entries)`, size: jsonText.length, sourceUrl: successfulUrl };
     }
 
     const id = 'uralic_full_dictionary';
