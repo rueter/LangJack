@@ -146,6 +146,34 @@ body {
   cursor: pointer;
 }
 
+/* Pin button next to a language selector (js/lib/lang-pins.js) */
+.lang-pin-btn {
+  padding: 3px 5px;
+  font-size: 12px;
+  line-height: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.lang-pin-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.lang-pin-btn.pinned {
+  opacity: 1;
+  filter: none;
+  border-color: var(--primary);
+}
+
+.lang-pin-btn:disabled {
+  cursor: default;
+  opacity: 0.25;
+}
+
 /* Main Container */
 .workbench-container {
   max-width: 1440px;

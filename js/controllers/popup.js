@@ -26,6 +26,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const setModeBothBtn = document.getElementById('setModeBothBtn');
   const defaultLangSelect = document.getElementById('defaultLangSelect');
   const defaultTgtLangSelect = document.getElementById('defaultTgtLangSelect');
+  // ISO order with pins (js/lib/lang-pins.js)
+  globalThis.LangPins?.attach(defaultLangSelect, 'src', { wrap: true });
+  globalThis.LangPins?.attach(defaultTgtLangSelect, 'tgt', { wrap: true });
 
   // Load and display current context menu mode
   async function loadMenuMode() {

@@ -790,6 +790,12 @@
       </div>
     `);
 
+    // Language lists in ISO order, with 📌 pins that keep the languages in use on top (js/lib/lang-pins.js)
+    if (typeof LangPins !== 'undefined') {
+      LangPins.attach(cardEl.querySelector('.hfst-lang-select'), 'src');
+      LangPins.attach(cardEl.querySelector('.hfst-tgt-lang-select'), 'tgt');
+    }
+
     // Event Listeners
     cardEl.querySelector('.hfst-btn-close')?.addEventListener('click', closeDictionaryCard);
 
@@ -1258,6 +1264,29 @@
         color: #334155;
         cursor: pointer;
         outline: none;
+      }
+
+      .lang-pin-btn {
+        font-size: 11px;
+        line-height: 1;
+        padding: 3px 4px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background: #ffffff;
+        cursor: pointer;
+        opacity: 0.45;
+        filter: grayscale(1);
+      }
+
+      .lang-pin-btn.pinned {
+        opacity: 1;
+        filter: none;
+        border-color: #0284c7;
+      }
+
+      .lang-pin-btn:disabled {
+        cursor: default;
+        opacity: 0.25;
       }
 
       .hfst-btn-close {

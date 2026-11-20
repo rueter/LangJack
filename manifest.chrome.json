@@ -33,6 +33,7 @@
         "<all_urls>"
       ],
       "js": [
+        "js/lib/lang-pins.js",
         "js/content/content.js"
       ],
       "run_at": "document_idle"

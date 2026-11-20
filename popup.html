@@ -192,6 +192,40 @@
       border-color: var(--primary);
     }
 
+    .lang-pin-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    .lang-pin-row .lang-picker-select {
+      flex: 1;
+      width: auto;
+    }
+
+    .lang-pin-btn {
+      padding: 5px 7px;
+      font-size: 12px;
+      line-height: 1;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: #ffffff;
+      cursor: pointer;
+      opacity: 0.45;
+      filter: grayscale(1);
+    }
+
+    .lang-pin-btn.pinned {
+      opacity: 1;
+      filter: none;
+      border-color: var(--primary);
+    }
+
+    .lang-pin-btn:disabled {
+      cursor: default;
+      opacity: 0.25;
+    }
+
     .popup-dict-result {
       background: #ffffff;
       border: 1px solid var(--border);
@@ -408,6 +442,7 @@
     CoNLL-U • Leipzig Glossing • Ve'rdd
   </div>
 
+  <script src="js/lib/lang-pins.js"></script>
   <script src="js/controllers/popup.js"></script>
 </body>
 </html>

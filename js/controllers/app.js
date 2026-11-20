@@ -323,6 +323,15 @@ export class WorkbenchApp {
     this.workspaceGlossLangSelect = document.getElementById('workspaceGlossLangSelect');
     this.settingsDefaultTgtLang = document.getElementById('settingsDefaultTgtLang');
 
+    // Language lists in ISO order, with 📌 pins that keep the languages in use on top (js/lib/lang-pins.js)
+    const pins = globalThis.LangPins;
+    if (pins) {
+      [this.srcLangSelect, this.inputTextLangSelect, document.getElementById('nightlyModelLang'), document.getElementById('paradigmLangSelect')]
+        .forEach(sel => pins.attach(sel, 'src'));
+      [this.tgtLangSelect, this.workspaceGlossLangSelect, this.settingsDefaultTgtLang]
+        .forEach(sel => pins.attach(sel, 'tgt'));
+    }
+
     this.inputTextArea = document.getElementById('inputTextArea');
     this.analyzeBtn = document.getElementById('analyzeBtn');
     this.samplePicker = document.getElementById('samplePicker');
