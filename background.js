@@ -985,7 +985,8 @@ export async function handleShowDictionaryCard(tab, text, srcLang = null, option
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tab.id },
-          files: ['js/content/content.js']
+          // lang-pins.js first, as in the manifest: the card's selectors use it for ISO order and pins
+          files: ['js/lib/lang-pins.js', 'js/content/content.js']
         });
       } catch (injErr) {
         console.warn('Could not inject content script:', injErr);

@@ -496,8 +496,9 @@
       langsWithSrc[srcLang] = EXTRA_SRC_LANG_NAMES[srcLang.toLowerCase()] || srcLang;
     }
 
-    // Lang selector options
-    const langOptions = Object.entries(langsWithSrc).map(([code, name]) => {
+    // Lang selector options, in ISO order like every other selector (LangPins below adds the pinned group)
+    const byIsoCode = ([a], [b]) => a.toLowerCase().localeCompare(b.toLowerCase());
+    const langOptions = Object.entries(langsWithSrc).sort(byIsoCode).map(([code, name]) => {
       const selected = code.toLowerCase() === srcLang.toLowerCase() ? 'selected' : '';
       return `<option value="${code}" ${selected}>${code} (${name})</option>`;
     }).join('');
@@ -539,7 +540,8 @@
 
       // Target translation languages dropdown options
       const standardTgtCodes = ['all', 'eng', 'fin', 'por', 'rus', 'deu', 'nob', 'sme', 'sjd', 'sju', 'est'];
-      const orderedTgtCodes = Array.from(new Set(['all', ...detectedTgtLangs, ...standardTgtCodes]));
+      const orderedTgtCodes = ['all', ...Array.from(new Set([...detectedTgtLangs, ...standardTgtCodes]))
+        .filter(code => code !== 'all').sort()];
       const tgtLangOptions = orderedTgtCodes.map(code => {
         const count = code === 'all' ? glosses.length : (glossesByLang[code]?.length || 0);
         const isSelected = code === tgtLang ? 'selected' : '';
