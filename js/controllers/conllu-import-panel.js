@@ -4,6 +4,7 @@
  * All data logic lives in services/conllu-import-service.js; this file only draws the panel and wires events.
  */
 
+import { setSafeHTML } from '../lib/safe-html.js';
 import { ENHANCE_COLUMNS, LOCKED_COLUMNS, describeGlossMapping } from '../services/conllu-enhance.js';
 import { KNOWN_LANGUAGES } from '../services/analyzer-service.js';
 import { ManualEditError } from '../services/conllu-import-service.js';
@@ -87,7 +88,7 @@ export class ConlluImportPanel {
     const options = list.map((it) => `<option value="${esc(it.importId)}"${it.importId === this.currentId ? ' selected' : ''}>
       ${esc(it.fileName)} — ${it.sentenceCount} sentences, imported ${esc(new Date(it.importedAt).toLocaleString())}</option>`).join('');
 
-    this.root.innerHTML = `
+    setSafeHTML(this.root, `
       <div class="ci-toolbar">
         <label class="ci-field ci-grow">Imported files
           <select data-role="file" ${list.length ? '' : 'disabled'}>${options || '<option>(none yet)</option>'}</select>
@@ -99,7 +100,7 @@ export class ConlluImportPanel {
       </div>
       <p class="vw-hint">The imported file is kept unchanged as the original. Edits are stored separately, and only edited
         sentences differ in the exported file.</p>
-      ${this.currentId ? this.renderFile() : '<div class="vw-empty">No treebank imported yet. Choose a .conllu file to load it.</div>'}`;
+      ${this.currentId ? this.renderFile() : '<div class="vw-empty">No treebank imported yet. Choose a .conllu file to load it.</div>'}`);
   }
 
   renderFile() {

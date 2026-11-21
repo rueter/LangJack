@@ -3,6 +3,7 @@
  * manage the connection. All data logic lives in services/verdd-api-service.js; this file
  * only draws the panel and wires events.
  */
+import { setSafeHTML } from '../lib/safe-html.js';
 import {
   VerddApi, signInToVerdd, describeAccess, VERDD_POS_FALLBACK, POS_UNDETERMINED, describeApiError, ensureOriginPermission, loadVerddConfig,
   normalizeBaseUrl, saveVerddConfig, newRow, draftsFromSentences, blockingReasons, homoState,
@@ -86,7 +87,7 @@ export class VerddPanel {
 
   render() {
     const tabs = [['send', 'Send'], ['browse', 'Browse & edit'], ['merge', 'Merge'], ['connection', 'Connection']];
-    this.root.innerHTML = `
+    setSafeHTML(this.root, `
       <div class="export-tabs vw-tabs">
         ${tabs.map(([id, label]) => `<div class="export-tab ${this.tab === id ? 'active' : ''}" data-action="tab" data-tab="${id}">${label}</div>`).join('')}
       </div>
@@ -95,7 +96,7 @@ export class VerddPanel {
       <div class="vw-view" data-view="send" ${this.tab === 'send' ? '' : 'hidden'}></div>
       <div class="vw-view" data-view="browse" ${this.tab === 'browse' ? '' : 'hidden'}></div>
       <div class="vw-view" data-view="merge" ${this.tab === 'merge' ? '' : 'hidden'}></div>
-      <div class="vw-view" data-view="connection" ${this.tab === 'connection' ? '' : 'hidden'}></div>`;
+      <div class="vw-view" data-view="connection" ${this.tab === 'connection' ? '' : 'hidden'}></div>`);
     this.renderSend();
     this.renderBrowse();
     this.renderMerge();
@@ -113,8 +114,8 @@ export class VerddPanel {
   }
 
   refreshDatalists() {
-    this.root.querySelector('#vwLangs').innerHTML = this.languages.map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('');
-    this.root.querySelector('#vwPos').innerHTML = this.posList.map(p => `<option value="${esc(p)}"></option>`).join('');
+    setSafeHTML(this.root.querySelector('#vwLangs'), this.languages.map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join(''));
+    setSafeHTML(this.root.querySelector('#vwPos'), this.posList.map(p => `<option value="${esc(p)}"></option>`).join(''));
   }
 
   async guard(work) {
@@ -143,7 +144,7 @@ export class VerddPanel {
 
   renderConnection() {
     const signedIn = Boolean(this.config.token);
-    this.view('connection').innerHTML = `
+    setSafeHTML(this.view('connection'), `
       <div class="vw-form">
         <label>Ve'rdd address
           <input type="url" id="vwBaseUrl" placeholder="https://www.example.org/verdd" value="${esc(this.config.baseUrl)}" autocomplete="off">
@@ -173,7 +174,7 @@ export class VerddPanel {
           </div>
         </details>
         <div id="vwConnStatus" class="vw-hint" role="status"></div>
-      </div>`;
+      </div>`);
   }
 
   /** The password sign-in: Ve'rdd checks it and hands back the account's token, which is what gets stored. */
@@ -268,7 +269,7 @@ export class VerddPanel {
   // ------------------------------------------------------------------------------------
 
   renderSend() {
-    this.view('send').innerHTML = `
+    setSafeHTML(this.view('send'), `
       <p class="vw-hint">Every entry needs a <strong>part of speech</strong>. Add a <strong>homonym</strong> number only to tell apart entries with the same headword, language and POS; use <em>Check in Ve'rdd</em> to see what already exists.</p>
       <div class="vw-actions">
         <button class="btn btn-secondary btn-sm" data-action="add-from-analysis">➕ Add words from analysis</button>
@@ -278,15 +279,15 @@ export class VerddPanel {
         <button class="btn btn-secondary btn-sm" data-action="clear-sent">Clear sent</button>
         <span class="vw-count" id="vwRowCount"></span>
       </div>
-      <div id="vwCards" class="vw-cards"></div>`;
+      <div id="vwCards" class="vw-cards"></div>`);
     this.renderCards();
   }
 
   renderCards() {
     const holder = this.view('send').querySelector('#vwCards');
-    holder.innerHTML = this.rows.length
+    setSafeHTML(holder, this.rows.length
       ? this.rows.map((row, index) => this.cardHtml(row, index)).join('')
-      : '<div class="vw-empty">No entries yet. Analyze some text and use “Add words from analysis”, or add a blank entry.</div>';
+      : '<div class="vw-empty">No entries yet. Analyze some text and use “Add words from analysis”, or add a blank entry.</div>');
     this.updateCount();
   }
 
@@ -402,10 +403,10 @@ export class VerddPanel {
     ['src-homo', 'tgt-homo', 'notes', 'badges'].forEach(slot => {
       const el = this.root.querySelector(`[data-slot="${slot}"][data-row="${row.id}"]`);
       if (!el) return;
-      if (slot === 'src-homo') el.innerHTML = this.homoControl(row, 'src');
-      else if (slot === 'tgt-homo') el.innerHTML = this.homoControl(row, 'tgt');
-      else if (slot === 'notes') el.innerHTML = this.notesHtml(row);
-      else el.innerHTML = this.badgesHtml(row);
+      if (slot === 'src-homo') setSafeHTML(el, this.homoControl(row, 'src'));
+      else if (slot === 'tgt-homo') setSafeHTML(el, this.homoControl(row, 'tgt'));
+      else if (slot === 'notes') setSafeHTML(el, this.notesHtml(row));
+      else setSafeHTML(el, this.badgesHtml(row));
     });
   }
 
@@ -491,7 +492,7 @@ export class VerddPanel {
 
   renderBrowse() {
     const f = this.browse.filters;
-    this.view('browse').innerHTML = `
+    setSafeHTML(this.view('browse'), `
       <form class="vw-search">
         <label>Language <input data-filter="language" list="vwLangs" value="${esc(f.language)}" autocapitalize="off"></label>
         <label>Word <input data-filter="text" value="${esc(f.text)}" lang="und"></label>
@@ -499,26 +500,26 @@ export class VerddPanel {
         <label class="vw-check"><input type="checkbox" data-filter="contains" ${f.contains ? 'checked' : ''}> contains</label>
         <button class="btn btn-primary btn-sm" type="submit">Search</button>
       </form>
-      <div id="vwBrowseBody"></div>`;
+      <div id="vwBrowseBody"></div>`);
     this.renderBrowseBody();
   }
 
   renderBrowseBody() {
     const body = this.view('browse').querySelector('#vwBrowseBody');
     if (this.browse.detail) {
-      body.innerHTML = this.detailHtml(this.browse.detail);
+      setSafeHTML(body, this.detailHtml(this.browse.detail));
       return;
     }
     const { results, total, searched } = this.browse;
     if (!searched) {
-      body.innerHTML = '<div class="vw-empty">Search Ve\'rdd by language and word to view and edit entries.</div>';
+      setSafeHTML(body, '<div class="vw-empty">Search Ve\'rdd by language and word to view and edit entries.</div>');
       return;
     }
     if (!results.length) {
-      body.innerHTML = '<div class="vw-empty">Nothing found.</div>';
+      setSafeHTML(body, '<div class="vw-empty">Nothing found.</div>');
       return;
     }
-    body.innerHTML = `
+    setSafeHTML(body, `
       <div class="vw-results">
         ${results.map(l => `
           <div class="vw-result">
@@ -529,7 +530,7 @@ export class VerddPanel {
             <button class="btn btn-secondary btn-sm" data-action="open-lexeme" data-id="${l.id}">Open</button>
           </div>`).join('')}
       </div>
-      ${results.length < total ? `<button class="btn btn-secondary btn-sm" data-action="more-results">Show more (${results.length} of ${total})</button>` : `<div class="vw-hint">${total} found.</div>`}`;
+      ${results.length < total ? `<button class="btn btn-secondary btn-sm" data-action="more-results">Show more (${results.length} of ${total})</button>` : `<div class="vw-hint">${total} found.</div>`}`);
   }
 
   async search(append = false) {
@@ -715,10 +716,10 @@ export class VerddPanel {
     const posNote = dropsPos
       ? ` The merged entry stays <strong>${esc(clash.pos)}</strong>; this entry's saved part of speech (${esc(detail.lexeme.pos)}) is dropped.`
       : '';
-    slot.innerHTML = `
+    setSafeHTML(slot, `
       <div class="vw-problems">Not saved: entry #${clash.id} is already <strong>${esc(clash.lexeme)}</strong> · ${esc(clash.pos)}${clash.homoId ? ` · homonym ${clash.homoId}` : ''}.
         Two entries cannot share a headword, POS and homonym number. Merge this entry into #${clash.id}, or give it another homonym number.${posNote}
-        <button class="btn btn-primary btn-sm" data-action="twin-merge-preview" data-absorbed="${detail.lexeme.id}" data-keeper="${clash.id}" data-allow-pos="${dropsPos ? 1 : ''}">Preview merge into #${clash.id}</button></div>`;
+        <button class="btn btn-primary btn-sm" data-action="twin-merge-preview" data-absorbed="${detail.lexeme.id}" data-keeper="${clash.id}" data-allow-pos="${dropsPos ? 1 : ''}">Preview merge into #${clash.id}</button></div>`);
     slot.scrollIntoView({ block: 'nearest' });
   }
 
@@ -846,7 +847,7 @@ export class VerddPanel {
 
   refreshTwins() {
     const slot = this.view('browse').querySelector('[data-slot="browse-twins"]');
-    if (slot) slot.innerHTML = this.twinsHtml(this.browse.detail);
+    if (slot) setSafeHTML(slot, this.twinsHtml(this.browse.detail));
   }
 
   async addTwin() {
@@ -877,7 +878,7 @@ export class VerddPanel {
       const report = await this.api.mergeLexeme(absorbedId, keeperId, { dryRun: true, ...options });
       detail.mergePreview = { absorbedId, keeperId, ...options, report };
       const slot = this.view('browse').querySelector('[data-slot="browse-merge"]');
-      slot.innerHTML = `
+      setSafeHTML(slot, `
         <div class="vw-merge-detail">
           <h5>Preview: join #${absorbedId} into #${keeperId}</h5>
           <div class="vw-merge-cols vw-merge-compare">
@@ -891,7 +892,7 @@ export class VerddPanel {
             <button class="btn btn-primary btn-sm" data-action="twin-merge-do">Join #${absorbedId} into #${keeperId}</button>
             <button class="btn btn-secondary btn-sm" data-action="twin-merge-cancel">Cancel</button>
           </div>
-        </div>`;
+        </div>`);
       slot.scrollIntoView({ block: 'nearest' });
     });
   }
@@ -977,7 +978,7 @@ export class VerddPanel {
       const report = await this.api.splitLexeme(detail.lexeme.id, { ...request, dryRun: true });
       detail.splitPreview = { request, report };
       const slot = this.view('browse').querySelector('[data-slot="browse-split"]');
-      slot.innerHTML = `
+      setSafeHTML(slot, `
         <div class="vw-merge-detail">
           <h5>Preview: new entry <span class="vw-lemma">${esc(report.new.lexeme)}</span> · ${esc(report.new.pos)}${report.new.homoId ? ` · homonym ${report.new.homoId}` : ''}</h5>
           <ul class="vw-merge-report">${describeSplit(report).map(line => `<li>${esc(line)}</li>`).join('')}</ul>
@@ -986,7 +987,7 @@ export class VerddPanel {
             <button class="btn btn-primary btn-sm" data-action="split-do">Split now</button>
             <button class="btn btn-secondary btn-sm" data-action="split-cancel">Cancel</button>
           </div>
-        </div>`;
+        </div>`);
     });
   }
 
@@ -1009,7 +1010,7 @@ export class VerddPanel {
 
   renderMerge() {
     const capital = this.merge.mode === CAPITALISED_NOUN;
-    this.view('merge').innerHTML = `
+    setSafeHTML(this.view('merge'), `
       <p class="vw-hint">${capital
         ? 'Entries of <strong>one language</strong> (nouns, POS N, unless you choose another source POS) whose headword begins with a capital letter, optionally only with the chosen initial letter (told apart by Unicode value: Latin A and Cyrillic А are different): names that may be proper nouns (Prop), or capitalised by mistake. Whether that is wrong depends on the language (weekdays and months are common nouns in many), which is why a language is required. Where the same word exists in lower case or under another POS it is offered as the entry to join. Nothing is changed until you confirm.'
         : 'Entries whose part of speech is undetermined (empty, ZERO or UND) and that share their headword and language with an entry that has one. An <strong>empty</strong> entry can simply be absorbed; otherwise inspect both, then join them. Nothing is changed until you confirm.'}</p>
@@ -1027,7 +1028,7 @@ export class VerddPanel {
       </form>
       ${capital ? `<div class="vw-hint" id="vwInitialCodes">${esc(describeInitials(this.merge.initials))}</div>` : ''}
       <div class="vw-hint" id="vwMergeProgress" role="status"></div>
-      <div id="vwMergeBody"></div>`;
+      <div id="vwMergeBody"></div>`);
     this.renderMergeBody();
   }
 
@@ -1040,15 +1041,15 @@ export class VerddPanel {
     const body = this.view('merge').querySelector('#vwMergeBody');
     const { groups, total, loaded } = this.merge;
     if (!loaded) {
-      body.innerHTML = '<div class="vw-empty">Press Find to list entries that can be merged.</div>';
+      setSafeHTML(body, '<div class="vw-empty">Press Find to list entries that can be merged.</div>');
     } else if (!groups.length) {
-      body.innerHTML = `<div class="vw-empty">${this.merge.mode === CAPITALISED_NOUN ? `No nouns with a capital initial in ${esc(this.merge.language.trim())}.` : 'No mergeable entries found.'}</div>`;
+      setSafeHTML(body, `<div class="vw-empty">${this.merge.mode === CAPITALISED_NOUN ? `No nouns with a capital initial in ${esc(this.merge.language.trim())}.` : 'No mergeable entries found.'}</div>`);
     } else {
-      body.innerHTML = `
+      setSafeHTML(body, `
         <div class="vw-hint">${total} ${this.merge.mode === CAPITALISED_NOUN ? (/^n$/i.test((this.merge.sourcePos || 'N').trim()) ? `capitalised ${total === 1 ? 'noun' : 'nouns'}` : `capitalised ${esc((this.merge.sourcePos || '').trim())} ${total === 1 ? 'entry' : 'entries'}`) : `mergeable ${total === 1 ? 'entry' : 'entries'}`}${esc(this.merge.scanNote)}.</div>
         ${this.merge.mode === CAPITALISED_NOUN ? this.bulkBarHtml() : ''}
         <div class="vw-cards">${groups.map(g => this.mergeGroupHtml(g)).join('')}</div>
-        ${groups.length < total ? '<button class="btn btn-secondary btn-sm" data-action="merge-more">Show more</button>' : ''}`;
+        ${groups.length < total ? '<button class="btn btn-secondary btn-sm" data-action="merge-more">Show more</button>' : ''}`);
     }
   }
 
@@ -1197,7 +1198,7 @@ export class VerddPanel {
     const bar = this.root.querySelector('.vw-bulk-bar');
     if (!bar) return;
     const holder = document.createElement('div');
-    holder.innerHTML = this.bulkBarHtml();
+    setSafeHTML(holder, this.bulkBarHtml());
     bar.replaceWith(holder.querySelector('.vw-bulk-bar'));
   }
 
@@ -1268,7 +1269,7 @@ export class VerddPanel {
 
   closeMergeDetail(absorbedId) {
     const slot = this.root.querySelector(`[data-slot="merge-detail"][data-absorbed="${absorbedId}"]`);
-    if (slot) slot.innerHTML = '';
+    if (slot) slot.replaceChildren();
   }
 
   relationLines(relations, keeperKeys, direction) {
@@ -1295,7 +1296,7 @@ export class VerddPanel {
       this.merge.previews[`${absorbedId}>${keeperId}`] = { report, options };
       const keeperKeys = new Set(keeperOutgoing.map(r => `${r.type}|${r.lexeme_to}`));
       const slot = this.root.querySelector(`[data-slot="merge-detail"][data-absorbed="${absorbedId}"]`);
-      slot.innerHTML = `
+      setSafeHTML(slot, `
         <div class="vw-merge-detail">
           <div class="vw-merge-cols vw-merge-compare">
             <div><h5>#${absorbedId} ${esc(groupEntry(group).pos || 'no POS')} — absorbed</h5>
@@ -1307,7 +1308,7 @@ export class VerddPanel {
             <button class="btn btn-primary btn-sm" data-action="merge-confirm" data-absorbed="${absorbedId}" data-keeper="${keeperId}">Join #${absorbedId} into #${keeperId}</button>
             <button class="btn btn-secondary btn-sm" data-action="merge-cancel" data-absorbed="${absorbedId}">Cancel</button>
           </div>
-        </div>`;
+        </div>`);
     });
   }
 
@@ -1392,12 +1393,12 @@ export class VerddPanel {
       ['src-homo', 'tgt-homo'].forEach(slot => {
         const holder = this.root.querySelector(`[data-slot="${slot}"][data-row="${row.id}"]`);
         const active = holder && holder.contains(document.activeElement);
-        if (holder && !active) holder.innerHTML = this.homoControl(row, slot === 'src-homo' ? 'src' : 'tgt');
+        if (holder && !active) setSafeHTML(holder, this.homoControl(row, slot === 'src-homo' ? 'src' : 'tgt'));
       });
     }
     ['notes', 'badges'].forEach(slot => {
       const holder = this.root.querySelector(`[data-slot="${slot}"][data-row="${row.id}"]`);
-      if (holder) holder.innerHTML = slot === 'notes' ? this.notesHtml(row) : this.badgesHtml(row);
+      if (holder) setSafeHTML(holder, slot === 'notes' ? this.notesHtml(row) : this.badgesHtml(row));
     });
   }
 
@@ -1451,10 +1452,10 @@ export class VerddPanel {
       'twin-add': () => this.addTwin(),
       'twin-merge-preview': () => this.previewTwinMerge(Number(el.dataset.absorbed), Number(el.dataset.keeper), el.dataset.allowPos === '1'),
       'twin-merge-do': () => this.performTwinMerge(),
-      'twin-merge-cancel': () => { this.view('browse').querySelector('[data-slot="browse-merge"]').innerHTML = ''; },
+      'twin-merge-cancel': () => { this.view('browse').querySelector('[data-slot="browse-merge"]').replaceChildren(); },
       'split-preview': () => this.previewSplit(),
       'split-do': () => this.performSplit(),
-      'split-cancel': () => { this.view('browse').querySelector('[data-slot="browse-split"]').innerHTML = ''; },
+      'split-cancel': () => { this.view('browse').querySelector('[data-slot="browse-split"]').replaceChildren(); },
       'add-translation': () => this.addTranslation(),
       'save-relation': () => this.saveRelation(id),
       'delete-relation': () => this.deleteRelation(id),
