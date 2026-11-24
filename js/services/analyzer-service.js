@@ -179,6 +179,8 @@ export class AnalyzerService {
     this.generators = new Map();
     this.generatorIds = new Map();
     this.generatorNames = new Map();
+    this.disambModels = new Map(); // langCode -> Hfst of analyser-disamb-gt-desc (the analyser GiellaLT's disambiguator.cg3 reads from)
+    this.disambNames = new Map();
     this.TagMapper = TagMapper;
   }
 
@@ -549,6 +551,106 @@ export class AnalyzerService {
     }
 
     return null;
+  }
+
+  /**
+   * Candidate download URLs for UralicNLP's analyser-disamb-gt-desc.hfstol: the analyser GiellaLT's disambiguator.cg3
+   * is written for. It differs from analyser-gt-desc by keeping the variant, homonym (+Hom), semantic (+Sem/...) and
+   * +Err/Orth tags the grammar's rules look at.
+   */
+  getDisambAnalyserUrls(langCode) {
+    const cleanLang = normalizeLangCode(langCode || 'myv');
+    const file = 'analyser-disamb-gt-desc.hfstol';
+    return [
+      `https://raw.githubusercontent.com/Rootroo-ltd/uralicnlpmodels/main/nightly/${cleanLang}/${file}`,
+      `https://media.githubusercontent.com/media/Rootroo-ltd/uralicnlpmodels/main/nightly/${cleanLang}/${file}`,
+      `https://cdn.jsdelivr.net/gh/Rootroo-ltd/uralicnlpmodels@main/nightly/${cleanLang}/${file}`,
+      `http://models.uralicnlp.com/nightly/${cleanLang}/${file}`,
+      `https://models.uralicnlp.com/nightly/${cleanLang}/${file}`
+    ];
+  }
+
+  /** Sets the CG-input analyser of a language from a buffer; saves it in this browser unless told not to. */
+  async loadDisambFromBuffer(buffer, lang, name = null, saveToDb = true) {
+    const cleanLang = normalizeLangCode(lang || this.activeLang || 'myv');
+    const hfst = HfstInputStream.fromBuffer(buffer).read();
+    const label = name || `UralicNLP ${cleanLang.toUpperCase()} Disambiguation Analyser (nightly)`;
+    this.disambModels.set(cleanLang, hfst);
+    this.disambNames.set(cleanLang, label);
+    if (this._disambMissing) this._disambMissing.delete(cleanLang);
+    if (saveToDb) {
+      await storageService.saveModel(`uralic_${cleanLang}_disamb_analyser`, label, 'disamb-analyser', buffer, { lang: cleanLang });
+    }
+    return { name: label, size: buffer.byteLength };
+  }
+
+  /** Downloads UralicNLP's analyser-disamb-gt-desc.hfstol for the language and makes it the CG-input analyser. */
+  async downloadAndLoadDisambAnalyser(langCode, onProgress = null) {
+    const cleanLang = normalizeLangCode(langCode || 'myv');
+    if (this._disambMissing) this._disambMissing.delete(cleanLang);
+    let lastError = null;
+    for (const downloadUrl of this.getDisambAnalyserUrls(cleanLang)) {
+      try {
+        const r = await fetch(`${downloadUrl}?_t=${Date.now()}`, { cache: 'reload' });
+        if (!r.ok) { lastError = new Error(`HTTP ${r.status} from ${downloadUrl}`); continue; }
+        const announced = +(r.headers.get('Content-Length') || 0);
+        if (announced > 0 && announced < MIN_MODEL_BYTES) { lastError = new Error(`${downloadUrl} sent ${announced} bytes (a Git LFS pointer)`); continue; }
+        const body = await readResponseBody(r, onProgress);
+        if (!looksLikeTransducer(body)) { lastError = new Error(`${downloadUrl} did not send a transducer`); continue; }
+        const res = await this.loadDisambFromBuffer(body, cleanLang);
+        return { ...res, sourceUrl: downloadUrl };
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw new Error(`Failed to download the disambiguation analyser for "${cleanLang}": ${lastError ? lastError.message : 'All mirrors unreachable'}`);
+  }
+
+  /**
+   * The CG-input analyser of a language: kept in memory, else in this browser, else (with download) from UralicNLP.
+   * @returns {Promise<Object|null>} null when there is none and it cannot be had
+   */
+  async ensureDisambAnalyserForLanguage(lang, { download = true, onProgress = null } = {}) {
+    const cleanLang = normalizeLangCode(lang || this.activeLang || 'myv');
+    if (this.disambModels.has(cleanLang)) return this.disambModels.get(cleanLang);
+    try {
+      const rec = await storageService.getModel(`uralic_${cleanLang}_disamb_analyser`);
+      if (rec && rec.buffer) {
+        this.disambModels.set(cleanLang, HfstInputStream.fromBuffer(rec.buffer).read());
+        this.disambNames.set(cleanLang, rec.name);
+        return this.disambModels.get(cleanLang);
+      }
+    } catch (e) {
+      console.warn(`Error loading the disambiguation analyser from IndexedDB for ${cleanLang}:`, e.message);
+    }
+    if (!download || (this._disambMissing && this._disambMissing.has(cleanLang))) return null;
+    try {
+      await this.downloadAndLoadDisambAnalyser(cleanLang, onProgress);
+      return this.disambModels.get(cleanLang) || null;
+    } catch (e) {
+      console.warn(`Could not download the disambiguation analyser for ${cleanLang}:`, e.message);
+      (this._disambMissing = this._disambMissing || new Set()).add(cleanLang); // not asked again until a renewal
+      return null;
+    }
+  }
+
+  /**
+   * The analyses the disambiguation analyser gives a word, as { raw, weight } (same look-up steps as analyze_word:
+   * the word, lowercased, capitalised). null without a CG-input analyser loaded.
+   */
+  analyzeForCg(word, language = null) {
+    const lang = normalizeLangCode(language || this.activeLang || 'myv');
+    const hfst = this.disambModels.get(lang);
+    if (!hfst || !word) return null;
+    const tries = [word];
+    if (word !== word.toLowerCase()) tries.push(word.toLowerCase());
+    const cap = word.charAt(0).toUpperCase() + word.slice(1);
+    if (cap !== word) tries.push(cap);
+    for (const w of tries) {
+      const res = hfst.lookup(w);
+      if (res && res.length) return res.map(([raw, weight]) => ({ raw, weight }));
+    }
+    return [];
   }
 
   /**

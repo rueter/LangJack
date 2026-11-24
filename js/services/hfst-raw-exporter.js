@@ -47,17 +47,22 @@ export function allReadings(tok) {
 export class HfstRawExporter {
   /**
    * @param {Array<{tokens: Array<Object>}>} sentences  analyzed sentences (analyzerService.analyzeText output)
-   * @param {{forCg?: boolean}} [options]  forCg: the stream is the input of a CG-3 grammar, so punctuation keeps the
-   *   reading the analyzer gives it (`"." CLB`), which the grammars' delimiters and rules expect
+   * @param {{forCg?: boolean, readingsFor?: function(Object): (Array<{raw: string, weight?: number}>|null)}} [options]
+   *   forCg: the stream is the input of a CG-3 grammar, so punctuation keeps the reading the analyzer gives it
+   *   (`"." CLB`), which the grammars' delimiters and rules expect.
+   *   readingsFor: gives the readings to list for a token instead of its own (the CG-3 stage reads the
+   *   disambiguation analyser's analyses); null or no answer keeps the token's own readings
    * @returns {string} the cohorts, a blank line between sentences; '' when there are no tokens
    */
-  static export(sentences, { forCg = false } = {}) {
+  static export(sentences, { forCg = false, readingsFor = null } = {}) {
     const blocks = [];
     for (const sent of sentences || []) {
       const lines = [];
       for (const tok of sent.tokens || []) {
         lines.push(`"<${tok.form}>"`);
-        const readings = allReadings(tok).filter(r => !r.isInferred && (forCg || !r.isPunct));
+        const own = allReadings(tok).filter(r => !r.isInferred && (forCg || !r.isPunct));
+        const other = readingsFor && !tok.isPunct ? readingsFor(tok) : null;
+        const readings = other && other.length ? other : own;
         if (readings.length === 0) {
           lines.push(`\t"${tok.form}" ?`); // the transducer gave no analysis
         } else {

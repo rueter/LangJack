@@ -355,6 +355,7 @@
             <input type="checkbox" id="cg3DeletedCheckbox">
             Removed readings (-p; always on with -t)
           </label>
+          <span id="cg3Status" style="font-size: 11px; color: var(--text-muted); flex-basis: 100%;"></span>
           <label id="cg3StageLabel" style="display: none; align-items: center; gap: 6px;" title="With several grammar files, show the output after this one (-t and -p then describe its rules). The files run in the order disambiguator, functions, dependency.">
             Output after:
             <select id="cg3StageSelect" style="font-size: 12px; padding: 2px 4px;"></select>
@@ -456,7 +457,8 @@
               📁 Upload disambiguator.cg3
               <input type="file" id="uploadCg3Input" accept=".cg3" multiple style="display: none;">
             </label>
-            <span style="font-size: 11px; color: var(--text-muted);">for the language chosen in the list above, or the one a file name starts with (myv_disambiguator.cg3); used by export tab 5 (CG3)</span>
+            <button id="fetchCg3Btn" class="btn btn-secondary btn-sm" title="Fetch the disambiguator.cg3 that UralicNLP's nightly models hold for the language chosen in the list above (and its analyser-disamb-gt-desc). A file you uploaded under the same name is kept.">⬇️ Fetch from UralicNLP</button>
+            <span style="font-size: 11px; color: var(--text-muted);">for the language chosen in the list above, or the one a file name starts with (myv_disambiguator.cg3); used by export tab 5 (CG3). Renew UralicNLP fetches it too. An uploaded analyser file with "disamb" in its name becomes the analyser the grammar reads from.</span>
           </div>
           <div id="uploadedCg3List" style="margin-top: 6px; font-size: 12px;"></div>
           <!-- Download Progress Indicator -->

@@ -566,6 +566,12 @@ export class WorkbenchApp {
     document.getElementById('downloadModelBtn')?.addEventListener('click', () => this.handleDownloadModel());
     document.getElementById('uploadModelInput')?.addEventListener('change', (e) => this.handleUploadModel(e));
     document.getElementById('uploadCg3Input')?.addEventListener('change', (e) => this.handleUploadCg3(e));
+    document.getElementById('fetchCg3Btn')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const lang = this.modelPanelLang();
+      btn.disabled = true;
+      try { await this.renewCg3(lang, getLangDisplayName(lang)); } finally { btn.disabled = false; }
+    });
     document.getElementById('downloadDictBtn')?.addEventListener('click', () => this.handleDownloadDict());
     document.getElementById('uploadDictInput')?.addEventListener('change', (e) => this.handleUploadDict(e));
 
@@ -2064,6 +2070,11 @@ export class WorkbenchApp {
   }
 
   /** Export tab 5: the raw analyses after the uploaded CG-3 grammar(s) of the source language have run. */
+  setCg3Status(text) {
+    const el = document.getElementById('cg3Status');
+    if (el) el.textContent = text || '';
+  }
+
   async updateCg3Export() {
     if (!this.exportPreview) return;
     const lang = this.srcLang;
@@ -2071,17 +2082,34 @@ export class WorkbenchApp {
     const show = (text) => { if (token === this._cg3ExportToken && this.activeExportTab === 'cg3') this.exportPreview.textContent = text; };
     if (!this.sentences || this.sentences.length === 0) { show('(No analysis output yet. Click Analyze above.)'); return; }
     if (!(await cg3Service.hasGrammar(lang))) {
-      show(`(No CG-3 grammar for ${lang} in this browser. Open Manage HFST Models & Dictionaries, choose ${lang} and use "Upload disambiguator.cg3".)`);
-      return;
+      // none uploaded: ask UralicNLP's nightly models once per language and session
+      this._cg3Asked = this._cg3Asked || new Set();
+      if (!this._cg3Asked.has(lang)) {
+        this._cg3Asked.add(lang);
+        show(`(Fetching the CG-3 grammar for ${lang} from UralicNLP...)`);
+        await this.renewCg3(lang, getLangDisplayName(lang), { quiet: true });
+        if (token !== this._cg3ExportToken) return;
+      }
+      if (!(await cg3Service.hasGrammar(lang))) {
+        show(`(No CG-3 grammar for ${lang}: UralicNLP has none and none is uploaded. Open Manage HFST Models & Dictionaries, choose ${lang} and use "Upload disambiguator.cg3".)`);
+        this.setCg3Status('');
+        return;
+      }
     }
     const upTo = await this.syncCg3StageSelect(lang);
     show('(Running the CG-3 grammar...)');
     try {
-      show((await cg3Service.disambiguate(this.sentences, lang, {
+      const result = (await cg3Service.disambiguate(this.sentences, lang, {
         trace: !!this.cg3TraceCheckbox?.checked,
         showDeleted: !!this.cg3DeletedCheckbox?.checked || !!this.cg3TraceCheckbox?.checked,
         upTo
-      })) || '');
+      })) || '';
+      if (token === this._cg3ExportToken) {
+        const grammars = await cg3Service.getGrammars(lang);
+        const run = cg3Service.lastRun || {};
+        this.setCg3Status(`Grammar: ${grammars.map(g => `${g.name} (${g.source === 'uralic' ? 'UralicNLP' : 'uploaded'})`).join(', ')} · readings from ${run.analyser === 'disamb' ? run.note : 'the ordinary analyser'}${run.analyser !== 'disamb' && run.note ? ' — ' + run.note : ''}`);
+      }
+      show(result);
     } catch (err) {
       console.error('CG-3 error:', err);
       show(`(CG-3 grammar error: ${err.message})`);
@@ -3860,6 +3888,8 @@ export class WorkbenchApp {
       // The generator behind "Paradigm of Lemma" is kept in the browser too, and would stay old without this
       if (label) label.textContent = 'Generator...';
       await this.renewGenerator(lang, langName);
+      if (label) label.textContent = 'CG-3...';
+      await this.renewCg3(lang, langName);
 
       // Re-analyze workspace text if present so all tokens get refreshed readings
       if (this.sentences.length > 0 || (this.inputTextArea && this.inputTextArea.value.trim())) {
@@ -3874,6 +3904,41 @@ export class WorkbenchApp {
         btn.classList.remove('renewing');
       }
       if (label) label.textContent = 'Renew UralicNLP';
+    }
+  }
+
+  /**
+   * Fetches the language's CG-3 grammar(s) from UralicNLP's nightly models (a file the user uploaded under the same name
+   * is kept) and, when UralicNLP has it, the analyser-disamb-gt-desc analyser they read from, replacing the copies kept here.
+   * @param {{quiet?: boolean}} [opts]  quiet: no toast when UralicNLP has no grammar for the language
+   * @returns {Promise<boolean>} true when a grammar was fetched
+   */
+  async renewCg3(lang, langName = lang, { quiet = false } = {}) {
+    try {
+      const r = await cg3Service.fetchFromUralic(lang);
+      let disambNote = '';
+      if (r.added.length) {
+        try {
+          await analyzerService.downloadAndLoadDisambAnalyser(lang);
+          disambNote = ' and its disambiguation analyser';
+        } catch (_) {
+          disambNote = ' (UralicNLP has no analyser-disamb-gt-desc for it: the ordinary analyser feeds the grammar)';
+        }
+      }
+      await this.renderUploadedCg3();
+      if (r.added.length) {
+        this.showToast(`✓ Renewed UralicNLP's ${r.added.join(', ')} for ${langName} (${lang})${disambNote}`, 'success');
+        if (this.activeExportTab === 'cg3') this.updateExports();
+      } else if (r.skipped.length && !quiet) {
+        this.showToast(`Kept your uploaded ${r.skipped.join(', ')} for ${lang}.`, 'info');
+      } else if (!quiet) {
+        this.showToast(r.errors.length ? `CG-3 grammar for ${lang} not fetched: ${r.errors[0]}` : `UralicNLP has no CG-3 grammar for ${lang}.`, 'info');
+      }
+      return r.added.length > 0;
+    } catch (err) {
+      console.warn('Error renewing the CG-3 grammar:', err);
+      if (!quiet) this.showToast(`CG-3 grammar for ${lang} not renewed: ${err.message}`, 'info');
+      return false;
     }
   }
 
@@ -3941,6 +4006,7 @@ export class WorkbenchApp {
       this.showToast(`Downloaded & activated ${lang.toUpperCase()} analyzer!`, 'success');
       if (this.sentences.length > 0) this.handleAnalyze();
       await this.renewGenerator(lang, getLangDisplayName(lang));
+      await this.renewCg3(lang, getLangDisplayName(lang), { quiet: true });
     } catch (err) {
       this.showToast('Download error: ' + err.message, 'error');
     } finally {
@@ -3954,6 +4020,15 @@ export class WorkbenchApp {
 
     try {
       const buffer = await file.arrayBuffer();
+      if (/disamb/i.test(file.name)) {
+        // analyser-disamb-gt-desc.hfstol: the analyser the CG-3 stage reads its cohorts from (not the one for the token cards)
+        const lang = splitLangPrefix(file.name).lang ? normalizeLangCode(splitLangPrefix(file.name).lang) : this.modelPanelLang();
+        await analyzerService.loadDisambFromBuffer(buffer, lang, `${file.name} (uploaded)`);
+        this.showToast(`Loaded "${file.name}" as the CG-3 analyser for ${lang}.`, 'success');
+        if (this.activeExportTab === 'cg3') this.updateExports();
+        e.target.value = '';
+        return;
+      }
       const id = `custom_analyser_${Date.now()}`;
       await analyzerService.loadFromBuffer(buffer, id, file.name, true);
       this.updateModelStatusDisplay();
@@ -4011,7 +4086,7 @@ export class WorkbenchApp {
       const row = document.createElement('div');
       row.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 2px 0;';
       const label = document.createElement('span');
-      label.textContent = `${g.name} · ${Math.max(1, Math.round(g.text.length / 1024))} KB · ${new Date(g.timestamp).toLocaleString()}`;
+      label.textContent = `${g.name} · ${g.source === 'uralic' ? 'UralicNLP nightly' : 'uploaded'} · ${Math.max(1, Math.round(g.text.length / 1024))} KB · ${new Date(g.timestamp).toLocaleString()}`;
       const remove = document.createElement('button');
       remove.className = 'btn-remove btn-sm';
       remove.title = 'Remove this grammar from this browser';
