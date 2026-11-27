@@ -148,6 +148,10 @@ export const TAG_TO_FEATS = {
   // Verb form
   'Der/NomAct': { feature: 'VerbForm', value: 'Vnoun' },
   'NomAct': { feature: 'VerbForm', value: 'Vnoun' },
+  'Vnoun': { feature: 'VerbForm', value: 'Vnoun' },
+
+  // Aspect (GiellaLT +Asp/...)
+  'Asp/Stat': { feature: 'Aspect', value: 'Stat' },
 
   // Voice
   'Act': { feature: 'Voice', value: 'Act' },
@@ -194,6 +198,7 @@ export const TAG_TO_FEATS = {
   'OcPl2': [{ feature: 'Person[obj]', value: '2' }, { feature: 'Number[obj]', value: 'Plur' }],
   'OcPl3': [{ feature: 'Person[obj]', value: '3' }, { feature: 'Number[obj]', value: 'Plur' }],
   'OcPl3F': [{ feature: 'Person[obj]', value: '3' }, { feature: 'Number[obj]', value: 'Plur' }, { feature: 'Gender[obj]', value: 'Fem' }],
+  'OcSP3': [{ feature: 'Person[obj]', value: '3' }, { feature: 'Number[obj]', value: 'Plur,Sing' }],      // the object is third person, number not told apart
   'OcPl3M': [{ feature: 'Person[obj]', value: '3' }, { feature: 'Number[obj]', value: 'Plur' }, { feature: 'Gender[obj]', value: 'Masc' }],
   'Oc3F': [{ feature: 'Person[obj]', value: '3' }, { feature: 'Number[obj]', value: 'Plur,Sing' }, { feature: 'Gender[obj]', value: 'Fem' }],
   'Oc3M': [{ feature: 'Person[obj]', value: '3' }, { feature: 'Number[obj]', value: 'Plur,Sing' }, { feature: 'Gender[obj]', value: 'Masc' }],
