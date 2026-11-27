@@ -4,17 +4,21 @@ import {
   detectLanguageForWord, LOOKUP_BUDGET_MS
 } from '../background.js';
 
-console.log('--- Script gate: letters without a look-alike in the other script ---');
-assert.strictEqual(wordScript('ǩiõl'), 'lat');
-assert.strictEqual(wordScript('piânnai'), 'lat');
-assert.strictEqual(wordScript('dnf'), 'lat', 'd n f have no Cyrillic look-alike');
-assert.strictEqual(wordScript('вастома'), null, 'only look-alikes: no commitment');
-assert.strictEqual(wordScript('кот'), null);
-assert.strictEqual(wordScript('пыдоʼ'), 'cyr', 'п д have no Latin look-alike');
-assert.strictEqual(wordScript('мунісӧ'), 'cyr', 'н і с are look-alikes, but ӧ is not');
-assert.strictEqual(wordScript('хаãвхэкомʼ'), 'cyr', 'stray Latin letters in a Cyrillic word: the majority decides');
-assert.strictEqual(wordScript('kæpa'), 'lat');
+console.log('--- Script gate: any Cyrillic character rules out the Latin-script languages, and not the other way round ---');
+assert.strictEqual(wordScript('пыдоʼ'), 'cyr');
+assert.strictEqual(wordScript('мунісӧ'), 'cyr');
+assert.strictEqual(wordScript('вастома'), 'cyr', 'only look-alikes of Latin letters, but Cyrillic characters all the same');
+assert.strictEqual(wordScript('кот'), 'cyr');
+assert.strictEqual(wordScript('хаãвхэкомʼ'), 'cyr', 'stray Latin letters in a Cyrillic word do not matter');
+assert.strictEqual(wordScript('piаnnai'), 'cyr', 'one Cyrillic «а» among Latin letters is enough');
+assert.strictEqual(wordScript('ԁӧзьӧр'), 'cyr', 'Cyrillic Supplement («ԁ» of the Komi alphabet) counts');
+assert.strictEqual(wordScript('ǩiõl'), null, 'Latin letters never rule anything out');
+assert.strictEqual(wordScript('piânnai'), null);
+assert.strictEqual(wordScript('dnf'), null, 'not even letters with no Cyrillic look-alike');
+assert.strictEqual(wordScript('kæpa'), null);
+assert.strictEqual(wordScript(''), null);
 assert.ok(isCyrillicOrthographyLang('mrj') && isCyrillicOrthographyLang('myv') && !isCyrillicOrthographyLang('sms'));
+assert.ok(isCyrillicOrthographyLang('bxr') && isCyrillicOrthographyLang('evn') && !isCyrillicOrthographyLang('fin'));
 console.log('✓ wordScript');
 
 console.log('--- lut/slh and mhr/mrj are not guessed ---');

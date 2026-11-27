@@ -31,6 +31,10 @@
   try {
     pageRetainedSrcLang = sessionStorage.getItem('hfst_retained_src_lang');
   } catch (_) {}
+  // True once this page has a language of its own: identified by an earlier lookup or chosen in the card. Until then
+  // pageRetainedSrcLang is only the default language, and the first lookup identifies the language of the page; after
+  // it nothing is guessed (the user can change the language in the card as always).
+  let pageLangEstablished = !!pageRetainedSrcLang;
 
   if (!pageRetainedSrcLang && typeof chrome !== 'undefined' && chrome.storage?.local) {
     chrome.storage.local.get(['ui_src_lang', 'ui_last_active_lang'], (res) => {
@@ -95,7 +99,8 @@
         chrome.runtime?.sendMessage?.({
           action: 'selection_changed',
           text,
-          srcLang: pageRetainedSrcLang
+          srcLang: pageRetainedSrcLang,
+          langLocked: pageLangEstablished
         });
       } catch (_) {}
     }
@@ -122,7 +127,8 @@
       chrome.runtime?.sendMessage?.({
         action: 'selection_changed',
         text,
-        srcLang: pageRetainedSrcLang
+        srcLang: pageRetainedSrcLang,
+        langLocked: pageLangEstablished
       });
 
       // Show floating trigger bubble near selection if dictionary card is not open
@@ -147,7 +153,7 @@
       if (!text && lastClickedWord) {
         text = lastClickedWord;
       }
-      sendResponse({ text, srcLang: pageRetainedSrcLang });
+      sendResponse({ text, srcLang: pageRetainedSrcLang, langLocked: pageLangEstablished });
       return true;
     }
 
@@ -294,7 +300,8 @@
         const sent = chrome.runtime?.sendMessage?.({
           action: 'request_dict_card',
           text: text,
-          srcLang: pageRetainedSrcLang
+          srcLang: pageRetainedSrcLang,
+          langLocked: pageLangEstablished
         }, (response) => {
           void chrome.runtime?.lastError;
           if (triggerBubbleEl !== bubble) return;
@@ -365,6 +372,7 @@
     // Retain language after first use on webpage
     if (data.srcLang) {
       pageRetainedSrcLang = data.srcLang;
+      pageLangEstablished = true;
       try {
         sessionStorage.setItem('hfst_retained_src_lang', data.srcLang);
       } catch (_) {}
@@ -977,6 +985,7 @@
     cardEl.querySelector('.hfst-lang-select')?.addEventListener('change', async (e) => {
       const newLang = e.target.value;
       pageRetainedSrcLang = newLang;
+      pageLangEstablished = true;
       try {
         sessionStorage.setItem('hfst_retained_src_lang', newLang);
       } catch (_) {}

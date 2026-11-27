@@ -57,7 +57,8 @@ import {
   komiSuffixLanguage,
   komiVarietyMarker,
   detectCyrillicLanguage,
-  tabLanguageCache
+  tabLanguageCache,
+  forgetTabLanguage
 } from '../background.js';
 import { analyzerService } from '../js/services/analyzer-service.js';
 import { dictionaryService } from '../js/services/dictionary-service.js';
@@ -785,12 +786,17 @@ assert.strictEqual(detectLanguageForText('Mõõnnâm kåʹlle jäänn’jam'), '
 assert.strictEqual(isPlausibleReading('Tõtõstõsündünüq', { lemma: 't', tags: ['N', 'ABBR', 'Sg', 'Nom'] }), false);
 assert.strictEqual(isPlausibleReading('t.', { lemma: 't', tags: ['N', 'ABBR'] }), true);
 assert.strictEqual(isPlausibleReading('kodo', { lemma: 'kodo', tags: ['N', 'Sg', 'Nom'] }), true);
+// each lookup below is the first on its page: once a page has its language (see test_page_language_lock.js) nothing is guessed
 for (const pref of ['sms', 'smn', 'myv', 'vro']) {
   assert.strictEqual((await analyzeWordWithLanguageAssurance('Tõtõstõsündünüq', pref)).lang, 'vro', `word «Tõtõstõsündünüq» with preferred ${pref} is vro`);
+  forgetTabLanguage(mockTab.id);
   assert.strictEqual((await handleShowDictionaryCard(mockTab, 'Tõtõstõsündünüq', pref)).srcLang, 'vro', `card word, preferred ${pref}`);
+  forgetTabLanguage(mockTab.id);
   assert.strictEqual((await handleShowDictionaryCard(mockTab, 'Mi tulõ latsiq', pref)).srcLang, 'vro', `card phrase, preferred ${pref}`);
 }
+forgetTabLanguage(mockTab.id);
 assert.strictEqual((await handleShowDictionaryCard(mockTab, 'Tõtõstõsündünüq mi kodo lätsi', 'smn')).srcLang, 'vro', 'one lucky word must not keep smn');
+forgetTabLanguage(mockTab.id);
 // Latin Skolt Sámi with curly quotes stays sms
 assert.strictEqual(detectLanguageForText('Mon ǩiõččum “kuuʹǩǩ” da ‘sääʹm’.'), 'sms', 'Skolt Sámi with quotation marks stays sms');
 assert.strictEqual(detectLanguageForText('Son lij “mõʼnn” da ”kåʹlle”.'), 'sms');

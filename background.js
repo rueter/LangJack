@@ -32,9 +32,37 @@ export async function ensureServices(lang = null) {
 // Retains active source language per tab/webpage for instant subsequent lookups
 export const tabLanguageCache = new Map();
 
+/**
+ * Tabs whose page has a language of its own: identified by the first lookup, or set by the user. As long as a tab is in
+ * here nothing is guessed any more on that page (the user can still change the language whenever they like); a tab that
+ * is not has only the default language, and the first lookup identifies the language of the page.
+ */
+export const tabLanguageLocked = new Set();
+const tabOrigins = new Map();
+
+/** Forgets what was learnt about the page of a tab (it was closed, or the tab went to another site). */
+export function forgetTabLanguage(tabId) {
+  tabLanguageCache.delete(tabId);
+  tabLanguageLocked.delete(tabId);
+  tabOrigins.delete(tabId);
+}
+
 if (typeof chrome !== 'undefined' && chrome.tabs?.onRemoved) {
-  chrome.tabs.onRemoved.addListener((tabId) => {
-    tabLanguageCache.delete(tabId);
+  chrome.tabs.onRemoved.addListener(forgetTabLanguage);
+}
+
+// A tab that goes to another site starts again: the page-level language is a property of the page (the content script
+// keeps it in sessionStorage, which is per site as well)
+if (typeof chrome !== 'undefined' && chrome.tabs?.onUpdated) {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (!changeInfo || !changeInfo.url) return;
+    let origin = null;
+    try { origin = new URL(changeInfo.url).origin; } catch (_) { return; }
+    if (tabOrigins.has(tabId) && tabOrigins.get(tabId) !== origin) {
+      tabLanguageCache.delete(tabId);
+      tabLanguageLocked.delete(tabId);
+    }
+    tabOrigins.set(tabId, origin);
   });
 }
 
@@ -534,44 +562,38 @@ const STRONG_EVIDENCE_LANGS = new Set(['vro', 'yrk', 'sjd', 'mns', 'mhr', 'mrj',
 /** Most time a lookup may wait for analyzers to load or download. */
 export const LOOKUP_BUDGET_MS = 4000;
 
-/** Languages written in Cyrillic; every other language LangJack offers is written in Latin letters. */
+/** Languages written in Cyrillic (a Latin-script spelling of some of them exists too; the Cyrillic one counts here). */
 const CYRILLIC_ORTHOGRAPHY_LANGS = new Set([
-  'myv', 'mdf', 'kpv', 'koi', 'udm', 'sjd', 'yrk', 'mhr', 'mrj', 'mns', 'rus', 'ukr', 'bel', 'bul', 'chv', 'bak', 'tat'
+  'myv', 'mdf', 'kpv', 'koi', 'udm', 'sjd', 'yrk', 'mhr', 'mrj', 'mns', 'rus', 'ukr', 'bel', 'bul', 'chv', 'bak', 'tat',
+  'bxr', 'evn', 'ckt', 'khk', 'kjh', 'tyv', 'xal', 'kca', 'sah', 'oss', 'krc', 'ady', 'kbd', 'che', 'tgk', 'kaz', 'kir',
+  'mkd', 'srp', 'uzb'
 ]);
 
 export function isCyrillicOrthographyLang(lang) {
   return CYRILLIC_ORTHOGRAPHY_LANGS.has(normalizeLangCode(lang || ''));
 }
 
-// Letters that look the same in both scripts (either case): a word made of them says nothing about its script.
-const CYRILLIC_LOOKALIKE_SET = new Set('авсенікјморѕтху');
-const LATIN_LOOKALIKE_SET = new Set('abcehijkmopstxy');
+/** Any letter of the Cyrillic block (U+0400-U+04FF) or the Cyrillic Supplement (U+0500-U+052F, with the Komi letters). */
+const CYRILLIC_CHAR = /[\u0400-\u052F]/;
 
-/**
- * Script a word's letters commit it to: 'cyr' when it has a Cyrillic letter with no Latin look-alike (б г д ж з и л п ф ц ч ш ӧ ...),
- * 'lat' when it has a Latin letter with no Cyrillic look-alike (d f g l n q r v w z, every letter with a diacritic ...),
- * null when it has only look-alikes (or none). A word with both kinds (stray Latin letters in a Cyrillic source, or the
- * reverse) goes by the majority, as detectLanguageForWord does.
- */
-export function wordScript(word) {
-  let cyr = false;
-  let lat = false;
-  for (const ch of (word || '').normalize('NFC')) {
-    const lower = ch.toLowerCase();
-    if (/[Ѐ-ӿ]/.test(ch)) {
-      if (!CYRILLIC_LOOKALIKE_SET.has(lower)) cyr = true;
-    } else if (/[A-Za-zÀ-ɏḀ-ỿɐ-ʯᴀ-ᶿ]/.test(ch)) {
-      if (!LATIN_LOOKALIKE_SET.has(lower)) lat = true;
-    }
-  }
-  if (cyr && lat) return isMostlyCyrillic(word) ? 'cyr' : 'lat';
-  return cyr ? 'cyr' : lat ? 'lat' : null;
+export function hasCyrillic(text) {
+  return CYRILLIC_CHAR.test(text || '');
 }
 
-/** True when a language's orthography cannot spell the word's committed script (see wordScript). */
+/**
+ * 'cyr' when the word has a Cyrillic character, whatever it is, otherwise null. A Cyrillic character is enough to rule
+ * out the languages written in Latin letters, look-alikes included (the Latin «a c e o p» of a Cyrillic source are
+ * what the languages of that script are read from). It does not go the other way: Latin letters, even ones with no
+ * Cyrillic look-alike, never rule out a Cyrillic-script language, because Cyrillic texts carry stray Latin letters
+ * (susoj.html: хаãвхэкомʼ). The narrowing only speeds up the start, so it must never keep the user from the language they mean.
+ */
+export function wordScript(word) {
+  return hasCyrillic(word) ? 'cyr' : null;
+}
+
+/** True when the word's script (see wordScript) cannot be that of the language: a Cyrillic word is not Latin-script. */
 function scriptExcludes(script, lang) {
-  if (!script) return false;
-  return script === 'cyr' ? !isCyrillicOrthographyLang(lang) : isCyrillicOrthographyLang(lang);
+  return script === 'cyr' && !isCyrillicOrthographyLang(lang);
 }
 
 /**
@@ -601,11 +623,19 @@ export async function ensureModelWithin(lang, ms = LOOKUP_BUDGET_MS) {
  *   instead of loading the preferred one first
  * - lut/slh and mhr/mrj, which the letters cannot separate, are lut and mrj unless the user chose the other
  * Otherwise the preferred language is checked first, then the language the letters point to, then other candidates.
+ *
+ * With `locked` (the page's language has been identified or set by the user) nothing is guessed: the word is analyzed in
+ * the preferred language and that language is reported, whatever the letters look like.
  */
-export async function analyzeWordWithLanguageAssurance(word, preferredLang = 'myv') {
+export async function analyzeWordWithLanguageAssurance(word, preferredLang = 'myv', { locked = false } = {}) {
   const cleanWord = (word || '').trim();
   const primaryLang = normalizeLangCode(preferredLang || 'myv');
   if (!cleanWord) return { lang: primaryLang, readings: [] };
+
+  if (locked) {
+    const ready = await ensureModelWithin(primaryLang, LOOKUP_BUDGET_MS);
+    return { lang: primaryLang, readings: ready ? analyzerService.analyze_word(cleanWord, primaryLang) : [] };
+  }
 
   const deadline = Date.now() + LOOKUP_BUDGET_MS;
   const timeLeft = () => deadline - Date.now();
@@ -679,6 +709,12 @@ export async function analyzeWordWithLanguageAssurance(word, preferredLang = 'my
   // A preferred language of the wrong script for this word: report the language the letters say
   if (!primaryUsable && detectedLang !== primaryLang && !scriptExcludes(script, detectedLang)) {
     return { lang: detectedLang, readings: detectedReadings };
+  }
+
+  // The word has a Cyrillic character, so the preferred language (written in Latin letters) is out and no analyzer knew
+  // the word: report the Cyrillic language its letters point to (Erzya when they point to none)
+  if (!primaryUsable) {
+    return { lang: normalizeLangCode(detectCyrillicLanguage(cleanWord, null)), readings: detectedReadings };
   }
 
   // If no language found valid morphological readings, return primaryLang with original readings
@@ -773,6 +809,7 @@ if (typeof chrome !== 'undefined') {
 export async function handleContextMenuClick(info, tab) {
   let selection = (info.selectionText || '').trim();
   let tabRetainedLang = null;
+  let langLocked = !!(tab?.id && tabLanguageLocked.has(tab.id));
 
   // If tab exists, query it for target word and any page-retained language
   if (tab?.id && typeof chrome !== 'undefined' && chrome.tabs) {
@@ -784,6 +821,7 @@ export async function handleContextMenuClick(info, tab) {
       if (resp?.srcLang) {
         tabRetainedLang = resp.srcLang;
       }
+      if (resp?.langLocked) langLocked = true;       // the page has its language: identified earlier or set by the user
     } catch (_) {}
   }
 
@@ -818,13 +856,13 @@ export async function handleContextMenuClick(info, tab) {
   // 2. Morphology Toggle items from context menu
   if (info.menuItemId === 'hfst_dict_morph_with') {
     await storageService.setSetting('ui_show_morphology', true);
-    const cardData = await handleShowDictionaryCard(tab, selection, srcLang, { showMorphology: true });
+    const cardData = await handleShowDictionaryCard(tab, selection, srcLang, { showMorphology: true, langLocked });
     return { action: 'morphology_toggle', showMorphology: true, cardData };
   }
 
   if (info.menuItemId === 'hfst_dict_morph_without') {
     await storageService.setSetting('ui_show_morphology', false);
-    const cardData = await handleShowDictionaryCard(tab, selection, srcLang, { showMorphology: false });
+    const cardData = await handleShowDictionaryCard(tab, selection, srcLang, { showMorphology: false, langLocked });
     return { action: 'morphology_toggle', showMorphology: false, cardData };
   }
 
@@ -832,13 +870,13 @@ export async function handleContextMenuClick(info, tab) {
   if (info.menuItemId && info.menuItemId.startsWith('hfst_tgt_')) {
     const pickedLang = info.menuItemId.replace('hfst_tgt_', '');
     await storageService.setSetting('ui_tgt_lang', pickedLang);
-    const cardData = await handleShowDictionaryCard(tab, selection, srcLang, { tgtLang: pickedLang });
+    const cardData = await handleShowDictionaryCard(tab, selection, srcLang, { tgtLang: pickedLang, langLocked });
     return { action: 'pick_translation_language', tgtLang: pickedLang, cardData };
   }
 
   // 4. Single-token Lemma Viewing / Dictionary default item
   if (info.menuItemId === 'hfst_dict_menu' || info.menuItemId === 'hfst_dict_view_lemma' || info.menuItemId === 'hfst_dict_lookup') {
-    const cardData = await handleShowDictionaryCard(tab, selection, srcLang);
+    const cardData = await handleShowDictionaryCard(tab, selection, srcLang, { langLocked });
     return { action: 'view_lemma_dictionary', cardData };
   }
 
@@ -861,14 +899,17 @@ export async function handleShowDictionaryCard(tab, text, srcLang = null, option
   const tabRetained = (tab?.id && tabLanguageCache.has(tab.id)) ? tabLanguageCache.get(tab.id) : null;
   const storedLang = await storageService.getSetting('ui_src_lang', 'myv');
   const preferredLang = normalizeLangCode(srcLang || tabRetained || storedLang);
+  // The page has a language of its own already (identified earlier, or set by the user): nothing is identified any more
+  const locked = options.langLocked === true || !!(tab?.id && tabLanguageLocked.has(tab.id));
 
   if (!isPhrase) {
     // Single Word: Detailed morphological parsing with automatic language assurance & candidate glosses
-    const { lang: resolvedLang, readings } = await analyzeWordWithLanguageAssurance(cleanText, preferredLang);
+    const { lang: resolvedLang, readings } = await analyzeWordWithLanguageAssurance(cleanText, preferredLang, { locked });
 
-    // Retain this language for this tab for subsequent lookups on this webpage
+    // Retain this language for this tab for subsequent lookups on this webpage; from now on it is the page's language
     if (tab?.id && resolvedLang) {
       tabLanguageCache.set(tab.id, resolvedLang);
+      tabLanguageLocked.add(tab.id);
     }
 
     // Filter out and prioritize non-guessed readings for dictionary lookup
@@ -919,9 +960,16 @@ export async function handleShowDictionaryCard(tab, text, srcLang = null, option
   } else {
     // Phrase / Sentence: Tokenize and analyze each word
     const phraseDeadline = Date.now() + LOOKUP_BUDGET_MS;
-    await ensureModelWithin(preferredLang, LOOKUP_BUDGET_MS);
+    // A phrase with Cyrillic characters is not in a language written in Latin letters: with no language set for the page
+    // yet the Cyrillic language its letters point to (Erzya if they point to none) is where the first analysis starts
+    let startLang = preferredLang;
+    if (!locked && hasCyrillic(cleanText) && !isCyrillicOrthographyLang(preferredLang)) {
+      const pointed = normalizeLangCode(detectLanguageForText(cleanText) || '');
+      startLang = isCyrillicOrthographyLang(pointed) ? pointed : 'myv';
+    }
+    await ensureModelWithin(startLang, LOOKUP_BUDGET_MS);
     await dictionaryService.init();
-    let phraseLang = preferredLang;
+    let phraseLang = startLang;
     // without the model in time the words show without readings
     const plainTokens = () => [{ tokens: cleanText.split(/\s+/).filter(Boolean).map(form => ({ form, readings: [], isPunct: false, glosses: [] })) }];
     let sentences = analyzerService.hasModelForLanguage(phraseLang)
@@ -937,8 +985,9 @@ export async function handleShowDictionaryCard(tab, text, srcLang = null, option
     const words = tokens.filter(t => !t.isPunct);
     const known = words.filter(t => t.selectedReading && !t.selectedReading.isGuessed && isPlausibleReading(t.form, t.selectedReading)).length;
     const recognizes = known > 0 && known >= Math.min(words.length, Math.ceil(words.length / 2));
-    if (!recognizes) {
-      const detected = normalizeLangCode(detectLanguageForText(cleanText) || phraseLang);
+    if (!recognizes && !locked) {
+      let detected = normalizeLangCode(detectLanguageForText(cleanText) || phraseLang);
+      if (hasCyrillic(cleanText) && !isCyrillicOrthographyLang(detected)) detected = phraseLang; // never Latin-script for Cyrillic text
       if (detected !== phraseLang) {
         try {
           if (await ensureModelWithin(detected, phraseDeadline - Date.now())) {
@@ -964,6 +1013,7 @@ export async function handleShowDictionaryCard(tab, text, srcLang = null, option
 
     if (tab?.id && phraseLang) {
       tabLanguageCache.set(tab.id, phraseLang);
+      tabLanguageLocked.add(tab.id);
     }
 
     const tgtLang = options.tgtLang || (await storageService.getSetting('ui_tgt_lang', 'all'));
@@ -1010,11 +1060,11 @@ export async function handleShowDictionaryCard(tab, text, srcLang = null, option
 /**
  * Look up quick translation summary for context menu dynamic display.
  */
-export async function getQuickTranslationSummary(word, srcLang = 'myv') {
+export async function getQuickTranslationSummary(word, srcLang = 'myv', { locked = false } = {}) {
   const cleanWord = (word || '').trim();
   if (!cleanWord) return null;
 
-  const { lang: resolvedLang, readings } = await analyzeWordWithLanguageAssurance(cleanWord, srcLang);
+  const { lang: resolvedLang, readings } = await analyzeWordWithLanguageAssurance(cleanWord, srcLang, { locked });
   const nonGuessed = readings.filter(r => !r.isGuessed);
   const candidateReadings = nonGuessed.length > 0 ? nonGuessed : readings;
   const exactMatch = candidateReadings.find(r => r.lemma && r.lemma.toLowerCase() === cleanWord.toLowerCase());
@@ -1102,6 +1152,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
     if (message.action === 'selection_changed') {
       if (sender?.tab?.id && message.srcLang) {
         tabLanguageCache.set(sender.tab.id, message.srcLang);
+        if (message.langLocked) tabLanguageLocked.add(sender.tab.id);   // the page told us its language is settled
       }
       if (message.text) {
         lastSelectedText = (message.text || '').trim();
@@ -1140,6 +1191,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
           const tabLang = targetTab?.id ? tabLanguageCache.get(targetTab.id) : null;
           const stored = await storageService.getSetting('ui_src_lang', 'myv');
           const srcLang = normalizeLangCode(message.srcLang || tabLang || stored);
+          if (targetTab?.id && message.langLocked) tabLanguageLocked.add(targetTab.id);
           const cardData = await handleShowDictionaryCard(targetTab, text, srcLang, message.options || {});
           sendResponse({ ok: true, data: cardData });
         } catch (err) {
@@ -1153,6 +1205,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
     if (message.action === 'set_page_language') {
       if (sender?.tab?.id && message.lang) {
         tabLanguageCache.set(sender.tab.id, message.lang);
+        tabLanguageLocked.add(sender.tab.id);            // set by the user: the page's language from now on
       }
       (async () => {
         try {
@@ -1196,6 +1249,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
           const srcLang = normalizeLangCode(message.srcLang || 'myv');
           if (sender?.tab?.id) {
             tabLanguageCache.set(sender.tab.id, srcLang);
+            tabLanguageLocked.add(sender.tab.id);        // the language was chosen in the card: it is not guessed again
           }
           await storageService.setSetting('ui_src_lang', srcLang);
           // at most LOOKUP_BUDGET_MS for the analyzer; a model still downloading serves the next lookup
