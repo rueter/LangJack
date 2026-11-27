@@ -48,15 +48,25 @@ export function noSpaceAfter(text, tokens) {
 /** A FEATS cell with its Feature=Value pairs in alphabetical order of the feature names ("_" stays "_"). */
 const sortFeats = (feats) => (!feats || feats === '_' ? '_' : featsToString(parseFeats(feats)));
 
+/**
+ * One line of comment text: line breaks and tabs would end the comment line or split it into columns, so they become
+ * single spaces. '' when nothing is left.
+ */
+export function commentLine(text) {
+  return String(text == null ? '' : text).replace(/ *[\r\n\t]+ */g, ' ').trim();
+}
+
 export class ConlluExporter {
   /**
    * Generates a CoNLL-U format string from annotated sentences and translations.
    * @param {Array<Object>} sentences - Array of sentence objects with tokens
    * @param {Array<{ lang: string, text: string }>} translations - Sentence or document translations
    * @param {string} [language=null] - Default language code for generation
+   * @param {string} [comment=''] - One comment for the sentences that have none of their own (sentence.comment): written
+   *   as `# comment = ...` after the translation lines, straight before the first token row
    * @returns {string} CoNLL-U formatted text
    */
-  static export(sentences, translations = [], language = null) {
+  static export(sentences, translations = [], language = null, comment = '') {
     if (!sentences || sentences.length === 0) return '';
 
     const lines = [];
@@ -78,6 +88,10 @@ export class ConlluExporter {
           }
         }
       }
+
+      // A single comment, after the translations and before the first token
+      const note = commentLine(sent.comment !== undefined && sent.comment !== null ? sent.comment : comment);
+      if (note) lines.push(`# comment = ${note}`);
 
       // 2. Token rows
       const spaceless = noSpaceAfter(sent.text, sent.tokens);

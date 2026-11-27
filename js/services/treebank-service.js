@@ -8,7 +8,7 @@
  */
 
 import { storageService } from './storage-service.js';
-import { ConlluExporter } from './conllu-exporter.js';
+import { ConlluExporter, commentLine } from './conllu-exporter.js';
 
 export class TreebankService {
   constructor() {
@@ -123,9 +123,10 @@ export class TreebankService {
    * @param {Array<Object>} translations - Translations list for the sentence
    * @param {string} srcLang - Source language ISO code
    * @param {string} targetLang - Target gloss language ISO code
+   * @param {string} [comment=''] - The sentence's single comment (`# comment = ...` in CoNLL-U)
    * @returns {Promise<Object>} The saved treebank record
    */
-  async saveSentence(sentence, translations = [], srcLang = 'myv', targetLang = 'all') {
+  async saveSentence(sentence, translations = [], srcLang = 'myv', targetLang = 'all', comment = '') {
     if (!sentence || !sentence.tokens || sentence.tokens.length === 0) {
       throw new Error('Cannot save empty sentence to treebank.');
     }
@@ -140,6 +141,7 @@ export class TreebankService {
       text: sentence.text || sentence.tokens.map(t => t.form).join(' '),
       tokens: JSON.parse(JSON.stringify(sentence.tokens || [])),
       translations: JSON.parse(JSON.stringify(translations || [])),
+      comment: commentLine(comment),
       timestamp: Date.now()
     };
 
@@ -165,16 +167,17 @@ export class TreebankService {
    * @param {Array<Object>} translations
    * @param {string} srcLang
    * @param {string} targetLang
+   * @param {string} [comment='']
    * @returns {Promise<Array<Object>>}
    */
-  async saveAllSentences(sentences, translations = [], srcLang = 'myv', targetLang = 'all') {
+  async saveAllSentences(sentences, translations = [], srcLang = 'myv', targetLang = 'all', comment = '') {
     if (!Array.isArray(sentences) || sentences.length === 0) {
       return [];
     }
 
     const saved = [];
     for (const sent of sentences) {
-      const tb = await this.saveSentence(sent, translations, srcLang, targetLang);
+      const tb = await this.saveSentence(sent, translations, srcLang, targetLang, comment);
       saved.push(tb);
     }
     return saved;
@@ -280,7 +283,8 @@ export class TreebankService {
       sent_id: tb.sent_id,
       text: tb.text,
       tokens: tb.tokens,
-      translations: tb.translations
+      translations: tb.translations,
+      comment: tb.comment || ''
     }));
 
     return ConlluExporter.export(sentences, null);
@@ -297,7 +301,8 @@ export class TreebankService {
       sent_id: treebank.sent_id,
       text: treebank.text,
       tokens: treebank.tokens,
-      translations: treebank.translations
+      translations: treebank.translations,
+      comment: treebank.comment || ''
     }], null);
   }
 

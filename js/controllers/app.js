@@ -95,6 +95,7 @@ export class WorkbenchApp {
   constructor() {
     this.sentences = [];
     this.translations = [{ id: 1, lang: 'eng', text: '' }];
+    this.comment = '';          // the single `# comment = ...` line, after the translations in the CoNLL-U export
     this.srcLang = 'myv';
     this.targetLang = 'all';
     this.activeExportTab = 'conllu';
@@ -352,6 +353,7 @@ export class WorkbenchApp {
     // Translations container
     this.translationsList = document.getElementById('translationsList');
     this.addTranslationBtn = document.getElementById('addTranslationBtn');
+    this.commentInput = document.getElementById('sentenceCommentInput');
 
     // Export elements
     this.exportTabs = document.querySelectorAll('.export-tab');
@@ -486,6 +488,11 @@ export class WorkbenchApp {
 
     this.addTranslationBtn.addEventListener('click', () => {
       this.addTranslationRow();
+    });
+
+    this.commentInput?.addEventListener('input', (e) => {
+      this.comment = e.target.value;
+      this.updateExports();
     });
 
     // Export tabs
@@ -781,6 +788,7 @@ export class WorkbenchApp {
     if (this.inputTextArea) this.inputTextArea.value = sample.text;
 
     this.translations = JSON.parse(JSON.stringify(sample.translations));
+    this.setComment('');
     this.renderTranslations();
 
     await storageService.setSetting('ui_src_lang', this.srcLang);
@@ -1002,7 +1010,7 @@ export class WorkbenchApp {
         try {
           let tb = treebankService.findDuplicate(sent, this.srcLang);
           if (!tb) {
-            tb = await treebankService.saveSentence(sent, this.translations, this.srcLang, this.targetLang);
+            tb = await treebankService.saveSentence(sent, this.translations, this.srcLang, this.targetLang, this.comment);
             this.updateTreebankUI();
             this.updateExports();
             this.showToast(`Saved sentence as Treebank #${tb.sent_id} and opened Dependency Annotator!`, 'success');
@@ -1026,7 +1034,7 @@ export class WorkbenchApp {
             }
           }
 
-          const tb = await treebankService.saveSentence(sent, this.translations, this.srcLang, this.targetLang);
+          const tb = await treebankService.saveSentence(sent, this.translations, this.srcLang, this.targetLang, this.comment);
           this.updateTreebankUI();
           this.updateExports();
           this.showToast(`Saved sentence as Treebank #${tb.sent_id} in accumulative file!`, 'success');
@@ -1831,6 +1839,12 @@ export class WorkbenchApp {
     });
   }
 
+  /** Sets the single comment and shows it in its field. */
+  setComment(text) {
+    this.comment = text || '';
+    if (this.commentInput) this.commentInput.value = this.comment;
+  }
+
   addTranslationRow() {
     const nextId = this.translations.length + 1;
     // Pick an unused common language if possible
@@ -1961,7 +1975,7 @@ export class WorkbenchApp {
       if (this.exportScope === 'accumulated' && treebankService.getCount() > 0) {
         output = treebankService.generateCombinedConllu();
       } else {
-        output = ConlluExporter.export(this.sentences, this.translations);
+        output = ConlluExporter.export(this.sentences, this.translations, null, this.comment);
       }
     } else if (this.activeExportTab === 'interlinear') {
       output = InterlinearExporter.exportPlainText(this.sentences, this.translations);
@@ -2162,7 +2176,7 @@ export class WorkbenchApp {
     let mime = 'text/plain';
 
     if (this.activeExportTab === 'conllu') {
-      content = ConlluExporter.export(this.sentences, this.translations);
+      content = ConlluExporter.export(this.sentences, this.translations, null, this.comment);
       filename = `annotated_${this.srcLang}.conllu`;
     } else if (this.activeExportTab === 'interlinear') {
       content = InterlinearExporter.exportPlainText(this.sentences, this.translations);
@@ -2275,6 +2289,7 @@ export class WorkbenchApp {
             if (this.inputTextArea) this.inputTextArea.value = '';
             this.sentences = [];
             this.translations = [{ id: 1, lang: 'eng', text: '' }];
+            this.setComment('');
             this.renderInterlinear();
             this.renderTranslations();
             this.updateDashboard();
@@ -2295,7 +2310,8 @@ export class WorkbenchApp {
         this.sentences,
         this.translations,
         this.srcLang,
-        this.targetLang
+        this.targetLang,
+        this.comment
       );
 
       this.updateTreebankUI();
@@ -2309,6 +2325,7 @@ export class WorkbenchApp {
         if (this.inputTextArea) this.inputTextArea.value = '';
         this.sentences = [];
         this.translations = [{ id: 1, lang: 'eng', text: '' }];
+        this.setComment('');
         this.renderInterlinear();
         this.renderTranslations();
         this.updateDashboard();
@@ -2545,6 +2562,7 @@ export class WorkbenchApp {
     }];
 
     this.translations = JSON.parse(JSON.stringify(tb.translations || [{ id: 1, lang: 'eng', text: '' }]));
+    this.setComment(tb.comment || '');
 
     this.renderInterlinear();
     this.renderTranslations();
@@ -3080,7 +3098,8 @@ export class WorkbenchApp {
       sent_id: this.currentAnnotatingTb.sent_id,
       text: this.currentAnnotatingTb.text,
       tokens: this.workingAnnotatingTokens,
-      translations: this.currentAnnotatingTb.translations
+      translations: this.currentAnnotatingTb.translations,
+      comment: this.currentAnnotatingTb.comment || ''
     }]);
     this.annotateConlluPreview.textContent = conllu;
   }
@@ -3434,7 +3453,8 @@ export class WorkbenchApp {
       sent_id: this.currentAnnotatingTb.sent_id,
       text: this.currentAnnotatingTb.text,
       tokens: this.workingAnnotatingTokens,
-      translations: this.currentAnnotatingTb.translations
+      translations: this.currentAnnotatingTb.translations,
+      comment: this.currentAnnotatingTb.comment || ''
     }]);
 
     if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof document !== 'undefined') {

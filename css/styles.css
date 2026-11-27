@@ -950,6 +950,21 @@ body {
   outline: none;
 }
 
+.comment-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-light);
+}
+
+.comment-label {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .btn-remove {
   background: transparent;
   border: none;
