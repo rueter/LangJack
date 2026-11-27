@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LangJack",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "LangJack: Linguistic morphological analyzer and interlinear glosser powered by hfst-js, UralicNLP dictionaries, UD, and Ve'rdd.",
   "browser_specific_settings": {
     "gecko": {

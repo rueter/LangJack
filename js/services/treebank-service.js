@@ -9,6 +9,7 @@
 
 import { storageService } from './storage-service.js';
 import { ConlluExporter, commentLine } from './conllu-exporter.js';
+import { oneLine } from './text-spaces.js';
 
 export class TreebankService {
   constructor() {
@@ -138,7 +139,7 @@ export class TreebankService {
       sent_id: nextOrder,
       srcLang: srcLang || 'myv',
       targetLang: targetLang || 'all',
-      text: sentence.text || sentence.tokens.map(t => t.form).join(' '),
+      text: oneLine(sentence.text) || sentence.tokens.map(t => t.form).join(' '),
       tokens: JSON.parse(JSON.stringify(sentence.tokens || [])),
       translations: JSON.parse(JSON.stringify(translations || [])),
       comment: commentLine(comment),

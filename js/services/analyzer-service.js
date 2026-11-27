@@ -3,6 +3,7 @@
  * and morphological analysis using hfst-js.
  */
 
+import { tabsAndRuns } from './text-spaces.js';
 import { HfstInputStream } from '../lib/hfst/core.js';
 import { TagMapper, stripGuessTags, readingComplexity } from './tag-mapper.js';
 import { storageService } from './storage-service.js';
@@ -686,6 +687,7 @@ export class AnalyzerService {
    */
   tokenize(text, language = null) {
     if (!text || typeof text !== 'string') return [];
+    text = tabsAndRuns(text);       // a tab is a single space, and no sentence text has two spaces in a row
 
     const rawSentences = [];
     for (const line of text.split(/\n+/)) {

@@ -8,6 +8,7 @@ import { analyzerService } from './analyzer-service.js';
 import { sortMiscSegments } from './conllu-parser.js';
 import { formatGloss } from './gloss-format.js';
 import { parseFeats, featsToString } from './conllu-enhance.js';
+import { oneLine } from './text-spaces.js';
 
 /** A token made only of punctuation or symbols (the analyzer's own isPunct flag covers just a few marks). */
 const isPunctForm = (form) => /^[\p{P}\p{S}]+$/u.test(form || '');
@@ -53,7 +54,7 @@ const sortFeats = (feats) => (!feats || feats === '_' ? '_' : featsToString(pars
  * single spaces. '' when nothing is left.
  */
 export function commentLine(text) {
-  return String(text == null ? '' : text).replace(/ *[\r\n\t]+ */g, ' ').trim();
+  return oneLine(text);
 }
 
 export class ConlluExporter {
@@ -74,7 +75,9 @@ export class ConlluExporter {
     sentences.forEach((sent, sIdx) => {
       // 1. Comments
       lines.push(`# sent_id = ${sent.sent_id || (sIdx + 1)}`);
-      lines.push(`# text = ${sent.text || ''}`);
+      // one line, and never more than one space between the words (a tab is a space too)
+      const sentText = oneLine(sent.text);
+      lines.push(`# text = ${sentText}`);
 
       // Translation comments: e.g. # text_en = ..., # text_fin = ...
       const trList = (sent.translations && sent.translations.length > 0)
@@ -84,7 +87,7 @@ export class ConlluExporter {
         for (const tr of trList) {
           if (tr.text && tr.text.trim()) {
             const langCode = (tr.lang || 'en').toLowerCase().trim();
-            lines.push(`# text_${langCode} = ${tr.text.trim()}`);
+            lines.push(`# text_${langCode} = ${oneLine(tr.text)}`);
           }
         }
       }
@@ -94,7 +97,7 @@ export class ConlluExporter {
       if (note) lines.push(`# comment = ${note}`);
 
       // 2. Token rows
-      const spaceless = noSpaceAfter(sent.text, sent.tokens);
+      const spaceless = noSpaceAfter(sentText, sent.tokens);
       (sent.tokens || []).forEach((tok, tIdx) => {
         const id = tok.id || (tIdx + 1);
         const form = tok.form || '';

@@ -115,7 +115,7 @@ LangJack is built from a single unified codebase supporting three distribution t
    - **Touch & Mobile Optimized**: Responsive mobile layouts, swipeable token cards, touch-friendly tap targets, and touch selection handling.
 
 4. **Chromium on Android (Kiwi Browser, Lemur Browser, Yandex Browser)**
-   - Android Chromium browsers that support extensions can install `dist/langjack-v1.0.2-chrome.zip` directly to enable in-page touch text selection and dictionary lookup across all web pages.
+   - Android Chromium browsers that support extensions can install `dist/langjack-v1.0.3-chrome.zip` directly to enable in-page touch text selection and dictionary lookup across all web pages.
 
 ---
 
@@ -134,9 +134,9 @@ To build production-ready packages for all targets from the unified codebase:
 ```
 
 Generated packages will be in the `dist/` directory:
-- `dist/langjack-v1.0.2-chrome.zip` (Chrome Desktop & Chromium Android)
-- `dist/langjack-v1.0.2-firefox.xpi` (Firefox Desktop & Firefox for Android)
-- `dist/langjack-v1.0.2-android-pwa.zip` (Chrome on Android PWA)
+- `dist/langjack-v1.0.3-chrome.zip` (Chrome Desktop & Chromium Android)
+- `dist/langjack-v1.0.3-firefox.xpi` (Firefox Desktop & Firefox for Android)
+- `dist/langjack-v1.0.3-android-pwa.zip` (Chrome on Android PWA)
 
 ---
 

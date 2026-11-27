@@ -18,6 +18,7 @@ import { generateLemmaParadigm, formatCells } from '../services/lemma-paradigm.j
 import { InterlinearExporter } from '../services/interlinear-exporter.js';
 import { VerddExporter } from '../services/verdd-exporter.js';
 import { storageService } from '../services/storage-service.js';
+import { tabsToSpaces } from '../services/text-spaces.js';
 import { TagMapper, POS_TO_UPOS, UPOS_TO_POS, stripGuessTags } from '../services/tag-mapper.js';
 import { dependencyService } from '../services/dependency-service.js';
 import { DependencyVisualizer } from '../services/dependency-visualizer.js';
@@ -298,7 +299,7 @@ export class WorkbenchApp {
       }
 
       if (queryText) {
-        if (this.inputTextArea) this.inputTextArea.value = decodeURIComponent(queryText);
+        if (this.inputTextArea) this.inputTextArea.value = tabsToSpaces(decodeURIComponent(queryText));
         await this.handleAnalyze();
       } else {
         // Load default sample if input is empty
@@ -462,6 +463,16 @@ export class WorkbenchApp {
     this.settingsDefaultTgtLang?.addEventListener('change', (e) => this.handleGlossLangChange(e.target.value));
 
     this.analyzeBtn.addEventListener('click', () => this.handleAnalyze());
+
+    // typed, pasted or dropped: every tab becomes a single space at once, the cursor staying where it was
+    this.inputTextArea.addEventListener('input', () => {
+      const area = this.inputTextArea;
+      if (!area.value.includes('\t')) return;
+      const caret = area.selectionStart;
+      const before = typeof caret === 'number' ? tabsToSpaces(area.value.slice(0, caret)) : null;
+      area.value = tabsToSpaces(area.value);
+      if (before !== null && area.setSelectionRange) area.setSelectionRange(before.length, before.length);
+    });
 
     this.clearBtn.addEventListener('click', () => {
       this.inputTextArea.value = '';
@@ -785,7 +796,7 @@ export class WorkbenchApp {
     if (this.settingsDefaultTgtLang) this.settingsDefaultTgtLang.value = this.targetLang;
 
     this.updateInputAnalyzerBadge();
-    if (this.inputTextArea) this.inputTextArea.value = sample.text;
+    if (this.inputTextArea) this.inputTextArea.value = tabsToSpaces(sample.text);
 
     this.translations = JSON.parse(JSON.stringify(sample.translations));
     this.setComment('');
@@ -799,6 +810,8 @@ export class WorkbenchApp {
   }
 
   async handleAnalyze() {
+    // a tab never stays in the text: it is a single space (also what was set by script or restored from elsewhere)
+    if (this.inputTextArea.value.includes('\t')) this.inputTextArea.value = tabsToSpaces(this.inputTextArea.value);
     const text = this.inputTextArea.value.trim();
     if (!text) {
       this.showToast('Please type or paste text to analyze.', 'error');
@@ -2554,7 +2567,7 @@ export class WorkbenchApp {
     if (this.inputTextLangSelect) this.inputTextLangSelect.value = this.srcLang;
     this.updateInputAnalyzerBadge();
 
-    this.inputTextArea.value = tb.text || '';
+    this.inputTextArea.value = tabsToSpaces(tb.text || '');
     this.sentences = [{
       sent_id: tb.sent_id,
       text: tb.text,
